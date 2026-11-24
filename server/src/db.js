@@ -71,6 +71,9 @@ CREATE TABLE IF NOT EXISTS withdrawals (
 `);
 
 // Migraciones simples: columnas agregadas después de la primera versión
+const pbCols = db.prepare('PRAGMA table_info(ad_postbacks)').all().map((c) => c.name);
+if (!pbCols.includes('telegram_id')) db.exec(`ALTER TABLE ad_postbacks ADD COLUMN telegram_id TEXT NOT NULL DEFAULT ''`);
+if (!pbCols.includes('revenue')) db.exec('ALTER TABLE ad_postbacks ADD COLUMN revenue REAL NOT NULL DEFAULT 0');
 const runCols = db.prepare('PRAGMA table_info(runs)').all().map((c) => c.name);
 if (!runCols.includes('character')) db.exec(`ALTER TABLE runs ADD COLUMN character TEXT NOT NULL DEFAULT 'hank'`);
 if (!runCols.includes('multiplier')) db.exec('ALTER TABLE runs ADD COLUMN multiplier REAL NOT NULL DEFAULT 1');

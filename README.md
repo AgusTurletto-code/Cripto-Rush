@@ -103,18 +103,20 @@ El repo incluye un `Dockerfile`: Railway lo detecta solo.
    - `DEV_MODE=0`. **Nunca lo pongas en 1 en producción**: cualquiera podría entrar sin Telegram.
 4. **Crea la Mini App:** en BotFather usa `/newapp`, elige tu bot y pon la URL de tu servidor. Te da un enlace del tipo `https://t.me/TuBot/app`.
 5. **TON Connect:** edita `client/public/tonconnect-manifest.json` con tu dominio real y sube un `icon.png` (180×180) a `client/public/`.
-6. **Monetag:**
-   - En [monetag.com](https://monetag.com) agrega tu Mini App y crea una zona **Rewarded Interstitial**.
-   - Monetag te muestra una etiqueta como `<script src='//libtl.com/sdk.js' data-zone='1234567' data-sdk='show_1234567'></script>`.
-     **No hace falta pegarla a mano:** copia solo el número (`1234567`) en `client/.env` como `VITE_MONETAG_ZONE=1234567`,
-     compila (`npm run build`) y vuelve a subir el juego. La etiqueta queda escrita en el HTML automáticamente.
-   - Para que Monetag la verifique, el juego tiene que estar publicado en internet (con HTTPS) y abrirse desde tu bot.
-     Recién entonces aprieta el botón de verificar en Monetag.
-   - *(Recomendado)* Configura el **postback** de Monetag apuntando a
-     `https://TU-DOMINIO/api/ads/postback?ymid={ymid}&secret=TU_SECRETO` y en el servidor pon
-     `AD_VERIFY_MODE=postback` y `AD_POSTBACK_SECRET=TU_SECRETO`.
-     Así el servidor solo da el x2 o el revivir si Monetag confirma que el anuncio se vio.
-     Revisa en el panel de Monetag el nombre exacto del parámetro, porque puede cambiar.
+6. **Monetag** ([guía oficial](https://docs.monetag.com/docs/ad-integration/getting-sdk-tag/)):
+   - En Monetag → pestaña **Telegram Mini Apps** → cargá el nombre y el link de la app (`https://t.me/TuBot/play`) → **Add and Continue**.
+   - Tocá **< > Get SDK** y después **Get instructions**: te muestra una etiqueta como
+     `<script src="https://XXXX/sdk.js" data-zone="1234567" data-sdk="show_1234567"></script>`.
+   - **No la pegues a mano.** En Railway cargá `VITE_MONETAG_ZONE=1234567` y `VITE_MONETAG_SDK_URL=https://XXXX/sdk.js`
+     (los valores exactos de tu etiqueta). Railway recompila y la etiqueta queda en el HTML del juego.
+   - **Postback (obligatorio para pagar recompensas de forma segura):** en los ajustes de la zona principal de Monetag,
+     campo **Postback URL**, pegá:
+     ```
+     https://TU-DOMINIO/api/ads/postback?secret=TU_SECRETO&ymid={ymid}&event_type={event_type}&reward_event_type={reward_event_type}&telegram_id={telegram_id}&estimated_price={estimated_price}
+     ```
+     y en Railway cargá `AD_POSTBACK_SECRET=TU_SECRETO` (el mismo valor, largo y al azar). Con eso el servidor
+     solo da el revivir / x2 si Monetag confirma que el anuncio se vio completo y pagó (`valued`).
+   - El panel `/admin` muestra los ingresos estimados que informa Monetag al lado de lo que pagás en retiros.
 
 ## Economía y pagos
 

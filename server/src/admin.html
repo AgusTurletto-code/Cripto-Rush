@@ -35,6 +35,8 @@ async function load() {
     ['Usuarios', s.users], ['Partidas 24h', s.runs24h], ['Anuncios 24h', s.ads24h],
     ['Partidas rechazadas 24h', s.rejectedRuns24h], ['Monedas en circulación', s.coinsOutstanding],
     ['Retiros pendientes', '$' + (s.pendingUsdCents / 100).toFixed(2)], ['Total pagado', '$' + (s.paidUsdCents / 100).toFixed(2)],
+    ['Ingresos anuncios 24h', '$' + Number(s.adRevenue24h).toFixed(3)], ['Ingresos anuncios total', '$' + Number(s.adRevenueTotal).toFixed(2)],
+    ['Verificación de anuncios', s.adVerifyMode === 'postback' ? '✅ postback' : '⚠️ solo cliente'],
   ].map(([k, v]) => `<div class="stat">${k}<b>${v}</b></div>`).join('');
   const list = await fetch('/api/admin/withdrawals?status=' + $('status').value, { headers: h() }).then(r => r.json());
   $('rows').innerHTML = list.map(w => `<tr>

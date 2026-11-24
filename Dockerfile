@@ -14,6 +14,7 @@ COPY server/src ./server/src
 
 # variables que el juego necesita al compilarse (se cargan en el panel del hosting)
 ARG VITE_MONETAG_ZONE
+ARG VITE_MONETAG_SDK_URL
 ARG VITE_TWA_RETURN_URL
 RUN npm run build --prefix client && rm -rf client/node_modules
 

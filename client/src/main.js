@@ -2,7 +2,7 @@ import { Game } from './game/game.js';
 import { CHARACTERS, renderPortraits } from './game/characters.js';
 import { api, errMsg, DEMO } from './services/api.js';
 import { initTelegram, haptic, tg } from './services/telegram.js';
-import { showRewardedAd, preloadAds } from './services/ads.js';
+import { showRewardedAd, preloadAds, preloadAd } from './services/ads.js';
 import { initWallet, friendly, short } from './services/wallet.js';
 
 const ui = document.getElementById('ui');
@@ -139,10 +139,18 @@ async function startRun() {
   }
 }
 
-/** Muestra un anuncio y lo reclama en el servidor (con reintentos si se usa postback). */
+// ymid único por anuncio (Monetag solo admite letras, números, - _ .)
+const adYmid = (type) => `${run.runId}_${type}`;
+const AD_ERRORS = {
+  ad_sdk_failed: 'No hay anuncios disponibles ahora. Intenta en un rato.',
+  ad_not_completed: 'Tienes que ver el anuncio completo para recibir la recompensa.',
+};
+const adErrMsg = (e) => AD_ERRORS[e?.message] || errMsg(e);
+
+/** Muestra un anuncio y lo reclama en el servidor (con reintentos mientras llega el postback). */
 async function watchAd(type) {
-  const ymid = `${run.runId}:${type}`;
-  await showRewardedAd(ymid);
+  const ymid = adYmid(type);
+  await showRewardedAd(ymid, type);
   for (let i = 0; ; i++) {
     try { return await api.claimAd(run.runId, type, ymid); } catch (e) {
       if (e.message !== 'ad_not_verified' || i >= 4) throw e;
@@ -152,6 +160,7 @@ async function watchAd(type) {
 }
 
 function showRevive() {
+  preloadAd(adYmid('revive'), 'revive').catch(() => {});
   let left = 5;
   modal(`<h2>📉 ¡Liquidado!</h2><p>Mira un anuncio y sigue corriendo</p>
     <div class="ring" id="ring"><span id="count">5</span></div>
@@ -174,7 +183,7 @@ function showRevive() {
       haptic('success');
       game.revive();
     } catch (e) {
-      toast(e.message === 'ad_sdk_failed' ? 'No hay anuncios disponibles ahora' : errMsg(e));
+      toast(adErrMsg(e), 3500);
       closeModal(); showGameOver();
     }
   });
@@ -184,6 +193,7 @@ function showGameOver() {
   closeModal();
   hudEls = null;
   const { coins, distance } = game.result;
+  if (coins > 0) preloadAd(adYmid('double'), 'double').catch(() => {});
   const mult = run.multiplier ?? 1;
   const total = Math.floor(coins * mult); // igual que el servidor
   render('');
@@ -221,7 +231,7 @@ function showGameOver() {
       run.doubled = true;
       $('#go-coins').textContent = '🪙 ' + fmt(total * 2);
     } catch (e) {
-      toast(e.message === 'ad_sdk_failed' ? 'No hay anuncios disponibles ahora' : errMsg(e));
+      toast(adErrMsg(e), 3500);
     }
     finish();
   });

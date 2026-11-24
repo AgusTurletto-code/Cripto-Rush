@@ -1,40 +1,39 @@
 /**
- * Anuncios con recompensa de Monetag para Telegram Mini Apps.
- * Panel: https://monetag.com → crear zona "Rewarded Interstitial" para Telegram Mini App.
- * El SDK expone una función global show_<ZONE_ID>() que devuelve una Promise:
- *   - se resuelve cuando el usuario terminó de ver el anuncio → dar recompensa
- *   - se rechaza si falló o no había anuncio
- * Si no hay VITE_MONETAG_ZONE configurado se muestra un anuncio simulado (para desarrollo).
+ * Anuncios con recompensa de Monetag (Rewarded Interstitial) para Telegram Mini Apps.
+ * Documentación: https://docs.monetag.com/docs/ad-integration/rewarded-interstitial/
+ *
+ * - La etiqueta del SDK se escribe en el HTML al compilar (ver vite.config.js), con
+ *   VITE_MONETAG_ZONE (número de zona principal) y VITE_MONETAG_SDK_URL (el src que da el panel).
+ * - show_<ZONA>() devuelve una Promise que se resuelve al CERRAR el anuncio, también si el usuario
+ *   lo cerró antes de tiempo. Solo hay recompensa si result.reward_event_type === 'valued'.
+ * - ymid: identificador único por anuncio (solo letras, números, - _ .). Llega en el postback.
+ * Sin VITE_MONETAG_ZONE se muestra un anuncio simulado (para desarrollo y la demo).
  */
 const ZONE = import.meta.env.VITE_MONETAG_ZONE;
+const SDK_URL = import.meta.env.VITE_MONETAG_SDK_URL || 'https://libtl.com/sdk.js';
 const fnName = ZONE ? `show_${ZONE}` : null;
 let loading = null;
+const preloads = new Map(); // ymid → Promise de precarga
 
 function loadSdk() {
   if (!ZONE) return Promise.resolve();
   if (window[fnName]) return Promise.resolve();
   if (loading) return loading;
-  // La etiqueta ya viene en el HTML (vite.config.js la agrega): esperar a que termine de cargar
-  const existing = document.querySelector(`script[data-sdk="${fnName}"]`);
-  if (existing) {
-    loading = new Promise((resolve, reject) => {
-      let waited = 0;
-      const t = setInterval(() => {
-        waited += 100;
-        if (window[fnName]) { clearInterval(t); resolve(); }
-        else if (waited >= 8000) { clearInterval(t); loading = null; reject(new Error('ad_sdk_failed')); }
-      }, 100);
-    });
-    return loading;
-  }
-  loading = new Promise((resolve, reject) => {
+  // si la etiqueta ya viene en el HTML, esperar a que cargue; si no, agregarla
+  if (!document.querySelector(`script[data-sdk="${fnName}"]`)) {
     const s = document.createElement('script');
-    s.src = 'https://libtl.com/sdk.js';
+    s.src = SDK_URL;
     s.dataset.zone = ZONE;
     s.dataset.sdk = fnName;
-    s.onload = () => resolve();
-    s.onerror = () => { loading = null; reject(new Error('ad_sdk_failed')); };
     document.head.appendChild(s);
+  }
+  loading = new Promise((resolve, reject) => {
+    let waited = 0;
+    const t = setInterval(() => {
+      waited += 100;
+      if (window[fnName]) { clearInterval(t); resolve(); }
+      else if (waited >= 10000) { clearInterval(t); loading = null; reject(new Error('ad_sdk_failed')); }
+    }, 100);
   });
   return loading;
 }
@@ -43,13 +42,35 @@ export function preloadAds() {
   loadSdk().catch(() => {});
 }
 
-/** Muestra un anuncio. ymid identifica la recompensa (se usa en el postback de Monetag). */
-export async function showRewardedAd(ymid) {
+/** Precarga un anuncio para que aparezca al instante (mismo ymid que al mostrarlo). */
+export function preloadAd(ymid, requestVar) {
+  if (!ZONE) return Promise.resolve();
+  if (!preloads.has(ymid)) {
+    const p = loadSdk().then(() => window[fnName]({ type: 'preload', ymid, requestVar }));
+    p.catch(() => preloads.delete(ymid));
+    preloads.set(ymid, p);
+  }
+  return preloads.get(ymid);
+}
+
+/**
+ * Muestra un anuncio con recompensa. Se resuelve solo si Monetag confirmó que se vio completo.
+ * Errores: 'ad_sdk_failed' (no cargó / sin anuncios) · 'ad_not_completed' (lo cerró antes).
+ */
+export async function showRewardedAd(ymid, requestVar) {
   if (!ZONE) return fakeAd();
+  await preloadAd(ymid, requestVar).catch(() => {}); // si la precarga falla, se intenta igual
   await loadSdk();
-  const show = window[fnName];
-  if (typeof show !== 'function') throw new Error('ad_sdk_failed');
-  await show({ ymid });
+  let result;
+  try {
+    result = await window[fnName]({ ymid, requestVar });
+  } catch {
+    throw new Error('ad_sdk_failed');
+  } finally {
+    preloads.delete(ymid);
+  }
+  if (result?.reward_event_type !== 'valued') throw new Error('ad_not_completed');
+  return result;
 }
 
 function fakeAd() {
@@ -62,7 +83,7 @@ function fakeAd() {
     const t = setInterval(() => {
       n--;
       el.querySelector('b').textContent = n;
-      if (n <= 0) { clearInterval(t); el.remove(); resolve(); }
+      if (n <= 0) { clearInterval(t); el.remove(); resolve({ reward_event_type: 'valued' }); }
     }, 1000);
   });
 }

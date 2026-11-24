@@ -37,7 +37,8 @@ export const config = {
 
   // 'client': se confía en que el SDK de Monetag resolvió la promesa (más simple).
   // 'postback': además se exige que Monetag haya llamado a /api/ads/postback (más seguro).
-  adVerifyMode: process.env.AD_VERIFY_MODE || 'client',
+  // si hay AD_POSTBACK_SECRET se usa 'postback' por defecto
+  adVerifyMode: process.env.AD_VERIFY_MODE || (process.env.AD_POSTBACK_SECRET ? 'postback' : 'client'),
   adPostbackSecret: process.env.AD_POSTBACK_SECRET || '',
 };
 

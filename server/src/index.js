@@ -87,15 +87,23 @@ app.post('/api/auth', wrap((req) => {
   return { token: signSession(id), user: publicUser(getUser.get(id)) };
 }));
 
-// Monetag llama a esta URL cuando un anuncio con recompensa se vio completo (configurar en su panel).
-// Ej: https://tu-dominio.com/api/ads/postback?ymid={ymid}&secret=TU_SECRETO
+// Postback de Monetag: lo llama su servidor por cada evento confirmado (impression / click).
+// Configurar en el panel de Monetag (ajustes de la zona principal → Postback URL):
+// https://TU-DOMINIO/api/ads/postback?secret=TU_SECRETO&ymid={ymid}&event_type={event_type}&reward_event_type={reward_event_type}&telegram_id={telegram_id}&estimated_price={estimated_price}
 app.get('/api/ads/postback', wrap((req) => {
-  if (config.adPostbackSecret && req.query.secret !== config.adPostbackSecret) {
+  // sin secreto configurado el endpoint queda apagado: cualquiera podría falsificar anuncios vistos
+  if (!config.adPostbackSecret || req.query.secret !== config.adPostbackSecret) {
     throw new ApiError(403, 'bad_secret');
   }
   const ymid = String(req.query.ymid || '');
-  if (!ymid) throw new ApiError(400, 'missing_ymid');
-  db.prepare('INSERT OR IGNORE INTO ad_postbacks (ymid, created_at) VALUES (?, ?)').run(ymid, now());
+  const valued = req.query.reward_event_type === 'valued';
+  const price = Math.max(0, Number(req.query.estimated_price) || 0);
+  // solo se registran eventos pagados ("valued"); impresión y click llegan con el mismo ymid
+  if (ymid && valued) {
+    db.prepare(`INSERT INTO ad_postbacks (ymid, created_at, telegram_id, revenue) VALUES (?, ?, ?, ?)
+                ON CONFLICT(ymid) DO UPDATE SET revenue = revenue + excluded.revenue`)
+      .run(ymid, now(), String(req.query.telegram_id || ''), price);
+  }
   return { ok: true };
 }));
 
@@ -143,10 +151,11 @@ api.post('/ads/claim', wrap((req) => {
 
   let verified = 0;
   if (config.adVerifyMode === 'postback') {
-    const expected = `${run.id}:${type}`;
-    if (ymid !== expected || !db.prepare('SELECT 1 FROM ad_postbacks WHERE ymid = ?').get(expected)) {
-      throw new ApiError(402, 'ad_not_verified');
-    }
+    const expected = `${run.id}_${type}`;
+    const pb = ymid === expected && db.prepare('SELECT telegram_id FROM ad_postbacks WHERE ymid = ?').get(expected);
+    if (!pb) throw new ApiError(402, 'ad_not_verified');
+    // el anuncio lo tiene que haber visto este mismo usuario de Telegram
+    if (pb.telegram_id && pb.telegram_id !== req.user.id) throw new ApiError(403, 'ad_not_verified');
     verified = 1;
   }
 
@@ -288,6 +297,10 @@ admin.get('/stats', wrap(() => ({
   coinsOutstanding: db.prepare('SELECT COALESCE(SUM(balance),0) s FROM users').get().s,
   pendingUsdCents: db.prepare(`SELECT COALESCE(SUM(usd_cents),0) s FROM withdrawals WHERE status='pending'`).get().s,
   paidUsdCents: db.prepare(`SELECT COALESCE(SUM(usd_cents),0) s FROM withdrawals WHERE status='paid'`).get().s,
+  // ingresos estimados que informa Monetag (en USD)
+  adRevenue24h: db.prepare('SELECT COALESCE(SUM(revenue),0) s FROM ad_postbacks WHERE created_at >= ?').get(now() - DAY).s,
+  adRevenueTotal: db.prepare('SELECT COALESCE(SUM(revenue),0) s FROM ad_postbacks').get().s,
+  adVerifyMode: config.adVerifyMode,
 })));
 admin.post('/users/:id/ban', wrap((req) => {
   db.prepare('UPDATE users SET banned = ? WHERE id = ?').run(req.body?.banned === false ? 0 : 1, req.params.id);

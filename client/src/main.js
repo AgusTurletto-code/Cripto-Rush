@@ -23,7 +23,8 @@ let user = null;
 let cfg = null;
 let run = null; // { runId, seed, revived, doubled, multiplier }
 let dailyShownThisSession = false;
-const usd = (coins) => (coins / cfg.coinsPerUsd).toFixed(2);
+// con tasas altas los montos chicos dan centavos: mostramos más decimales si hace falta
+const usd = (coins) => { const v = coins / cfg.coinsPerUsd; return v > 0 && v < 0.1 ? v.toFixed(3) : v.toFixed(2); };
 const multOf = (id) => CHARACTERS[id]?.multiplier ?? 1;
 const fmtMult = (m) => 'x' + Number(m).toLocaleString(LOCALE, { maximumFractionDigits: 2 });
 const charDesc = (c) => (LANG === 'en' && c.desc_en) || c.desc;
@@ -425,12 +426,13 @@ function showCharacters() {
 // ---------- Retiros ----------
 async function showWallet() {
   game.toMenu();
+  try { cfg = await api.config(); } catch { /* se usa la anterior */ } // la tasa cambia sola: traer la actual
   const canWithdraw = user.balance >= cfg.minWithdrawCoins;
   render(`<div class="screen scroll">
     <div class="page-head"><button class="back" id="back" aria-label="${esc(t('back_btn'))}">←</button><h2>${esc(t('withdraw_title'))}</h2></div>
     <div class="box"><h3>${esc(t('your_balance'))}</h3>
       <div class="balance">🪙 ${fmt(user.balance)}<small>≈ $${usd(user.balance)}</small></div>
-      <p class="legal">${esc(t('rate_line', { rate: fmt(cfg.coinsPerUsd), min: fmt(cfg.minWithdrawCoins), minUsd: usd(cfg.minWithdrawCoins) }))}</p>
+      <p class="legal">${esc(t('rate_line', { rate: fmt(cfg.coinsPerUsd), min: fmt(cfg.minWithdrawCoins), minUsd: usd(cfg.minWithdrawCoins) }))}<br>${esc(t('rate_auto'))}</p>
     </div>
     <div class="box"><h3>${esc(t('connect_wallet'))}</h3>
       ${DEMO ? `<button class="btn" id="demo-wallet">${esc(t('demo_wallet'))}</button>` : '<div id="ton-btn"></div>'}

@@ -1,10 +1,12 @@
-// ⚠️ Deben coincidir con RULES en server/src/config.js (el servidor valida las partidas con esto).
+// La curva de velocidad y el espaciado de monedas viven en shared/speed.js (los usa también el servidor).
+import { SPEED, COIN_SPACING, speedAt, speedAtDistance } from '../../../shared/speed.js';
+
 export const RULES = {
-  startSpeed: 14,
-  acceleration: 0.22,
-  maxSpeed: 38,
-  coinSpacing: 3,
+  startSpeed: SPEED.start,
+  maxSpeed: SPEED.max,
+  coinSpacing: COIN_SPACING,
 };
+export { speedAt, speedAtDistance };
 
 export const LANES = [-2.4, 0, 2.4];
 
@@ -24,8 +26,3 @@ export const POWERUPS = {
   shield: { label: 'Escudo HODL', icon: '🛡️', duration: 12 },
 };
 
-/** Velocidad esperada a una distancia dada (sirve para espaciar obstáculos). */
-export function speedAtDistance(d) {
-  const { startSpeed: v0, acceleration: a, maxSpeed } = RULES;
-  return Math.min(maxSpeed, Math.sqrt(v0 * v0 + 2 * a * d));
-}

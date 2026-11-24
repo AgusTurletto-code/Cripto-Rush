@@ -6,6 +6,7 @@ import { config } from './config.js';
 import { db, tx } from './db.js';
 import { validateInitData, signSession, verifySession } from './auth.js';
 import { checkRun, CHARACTERS, multiplierOf, creditFor } from './game.js';
+import { rate, minWithdrawCoins, economyState, recordIssued, recordSpent, recompute } from './economy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -56,6 +57,7 @@ function settlePendingAd(ymid, telegramId) {
     const bonus = run.pending_bonus;
     db.prepare('UPDATE runs SET pending_bonus = 0, credited = credited + ? WHERE id = ?').run(bonus, runId);
     db.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ?').run(bonus, bonus, run.user_id);
+    recordIssued(bonus);
     payReferral(run.user_id, bonus);
     console.log(`[ads] x2 confirmado tarde: +${bonus} a ${run.user_id}`);
   }
@@ -160,8 +162,9 @@ function auth(req, _res, next) {
 
 // ---------- Rutas públicas ----------
 app.get('/api/config', wrap(() => ({
-  coinsPerUsd: config.economy.coinsPerUsd,
-  minWithdrawCoins: config.economy.minWithdrawCoins,
+  coinsPerUsd: rate(),
+  minWithdrawCoins: minWithdrawCoins(),
+  rateMode: economyState().mode,
   dailyCoinCap: config.economy.dailyCoinCap,
   currencies: config.economy.currencies,
   characters: CHARACTERS,
@@ -354,6 +357,7 @@ api.post('/run/end', wrap((req) => {
     db.prepare(`UPDATE users SET balance = balance + ?, total_earned = total_earned + ?,
                 best_distance = MAX(best_distance, ?) WHERE id = ?`)
       .run(credited, credited, Math.floor(distance), req.user.id);
+    recordIssued(credited);
     payReferral(req.user.id, credited);
 
     return {
@@ -372,9 +376,11 @@ function payReferral(userId, credited) {
   const u = getUser.get(userId);
   if (!u.referred_by || u.ref_status === 'blocked' || credited <= 0) return;
   const r = config.referrals;
-  const addTo = (id, coins, refEarn = 0) => db.prepare(
-    'UPDATE users SET balance = balance + ?, total_earned = total_earned + ?, ref_earnings = ref_earnings + ? WHERE id = ?'
-  ).run(coins, coins, refEarn, id);
+  const addTo = (id, coins, refEarn = 0) => {
+    db.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ?, ref_earnings = ref_earnings + ? WHERE id = ?')
+      .run(coins, coins, refEarn, id);
+    recordIssued(coins);
+  };
 
   if (u.ref_status === 'pending') {
     // monedas ganadas jugando (sin contar premios): el amigo tiene que jugar de verdad
@@ -403,6 +409,7 @@ api.post('/daily/claim', wrap((req) => tx(() => {
   const reward = rewards[(streak - 1) % rewards.length];
   db.prepare(`UPDATE users SET balance = balance + ?, total_earned = total_earned + ?, daily_streak = ?, daily_last = ? WHERE id = ?`)
     .run(reward, reward, streak, today, u.id);
+  recordIssued(reward);
   return { reward, streak, user: publicUser(getUser.get(u.id)) };
 })));
 
@@ -433,6 +440,7 @@ api.post('/character/buy', wrap((req) => {
       owned.push(id);
       db.prepare('UPDATE users SET balance = balance - ?, owned = ? WHERE id = ?')
         .run(ch.price, JSON.stringify(owned), u.id);
+      recordSpent(ch.price);
     }
     db.prepare('UPDATE users SET character = ? WHERE id = ?').run(id, u.id);
     return publicUser(getUser.get(u.id));
@@ -463,7 +471,7 @@ api.post('/withdraw', wrap((req) => {
   const currency = req.body?.currency;
   const e = config.economy;
   if (!e.currencies.includes(currency)) throw new ApiError(400, 'bad_currency');
-  if (!Number.isFinite(coins) || coins < e.minWithdrawCoins) throw new ApiError(400, 'below_minimum');
+  if (!Number.isFinite(coins) || coins < minWithdrawCoins()) throw new ApiError(400, 'below_minimum');
 
   return tx(() => {
     const u = getUser.get(req.user.id);
@@ -473,7 +481,7 @@ api.post('/withdraw', wrap((req) => {
       .get(u.id, now() - DAY).c;
     if (recent >= e.maxWithdrawalsPerDay) throw new ApiError(429, 'withdraw_limit');
 
-    const usdCents = Math.floor((coins / e.coinsPerUsd) * 100);
+    const usdCents = Math.floor((coins / rate()) * 100); // tasa del momento del pedido
     db.prepare('UPDATE users SET balance = balance - ? WHERE id = ?').run(coins, u.id);
     db.prepare(`INSERT INTO withdrawals (user_id, coins, usd_cents, currency, wallet, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .run(u.id, coins, usdCents, currency, u.wallet, now());
@@ -532,6 +540,7 @@ admin.post('/withdrawals/:id', wrap((req) => {
   });
 }));
 admin.get('/ads-debug', wrap(() => adLog));
+admin.post('/economy/recompute', wrap(() => recompute()));
 admin.get('/stats', wrap(() => ({
   users: db.prepare('SELECT COUNT(*) c FROM users').get().c,
   runs24h: db.prepare('SELECT COUNT(*) c FROM runs WHERE started_at >= ?').get(now() - DAY).c,
@@ -544,6 +553,7 @@ admin.get('/stats', wrap(() => ({
   adRevenue24h: db.prepare('SELECT COALESCE(SUM(revenue),0) s FROM ad_postbacks WHERE created_at >= ?').get(now() - DAY).s,
   adRevenueTotal: db.prepare('SELECT COALESCE(SUM(revenue),0) s FROM ad_postbacks').get().s,
   adVerifyMode: config.adVerifyMode,
+  economy: economyState(),
   db: { path: config.dbPath, persistent: config.dbPersistent, volume: config.volumePath, onRailway: !!process.env.RAILWAY_ENVIRONMENT },
   referralsConfigured: !!config.referrals.botUsername,
   dailyClaims24h: db.prepare('SELECT COUNT(*) c FROM users WHERE daily_last = ?').get(dayStr()).c,

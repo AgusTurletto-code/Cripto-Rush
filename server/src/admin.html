@@ -54,6 +54,8 @@ async function load() {
     ['Verificación de anuncios', s.adVerifyMode === 'postback' ? '✅ postback' : '⚠️ solo cliente'],
     ['Referidos', s.referralsConfigured ? `${s.referredUsers} invitados · ${s.blockedReferrals} bloqueados` : '⚠️ falta BOT_USERNAME'],
     ['Diarios reclamados hoy', s.dailyClaims24h],
+    ['Tasa (monedas = $1)', s.economy ? `${Number(s.economy.rate).toLocaleString('es')} · ${({ auto: '🤖 automática', learning: '📚 aprendiendo (pocos datos)', fixed: '📌 fija' })[s.economy.mode] || s.economy.mode}` : '?'],
+    ['Base de la tasa', s.economy ? `ingresos ${s.economy.windowDays || 7}d $${s.economy.revenue ?? 0} · monedas ${Number(s.economy.netCoins || 0).toLocaleString('es')} · devuelve ${Math.round(s.economy.share * 100)}%` : '?'],
     ['Base de datos', s.db ? (s.db.persistent ? '✅ disco permanente' : (s.db.onRailway ? '🚨 se borra al reiniciar' : 'local')) : '?'],
   ].map(([k, v]) => `<div class="stat">${k}<b>${v}</b></div>`).join('');
   const adlog = await fetch('/api/admin/ads-debug', { headers: h() }).then(r => r.json());

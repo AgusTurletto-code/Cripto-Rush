@@ -4,7 +4,7 @@ import { CHARACTERS } from '../game/characters.js';
 
 const KEY = 'cryptorush-demo-v3';
 const CFG = {
-  coinsPerUsd: 20000, minWithdrawCoins: 40000, dailyCoinCap: 0, devMode: true,
+  coinsPerUsd: 150000, minWithdrawCoins: 150000, rateMode: 'learning', dailyCoinCap: 0, devMode: true,
   currencies: ['USDT_TON', 'TON'],
   characters: CHARACTERS,
   dailyRewards: [100, 150, 200, 300, 400, 600, 1000],

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { World, OBSTACLE_TYPES, makePowerupModel } from './world.js';
 import { buildCharacter } from './characters.js';
-import { LANES, PHYS, RULES, POWERUPS } from './rules.js';
+import { LANES, PHYS, RULES, POWERUPS, speedAt } from './rules.js';
 
 const DAY_CYCLE_SECONDS = 140; // un día completo (día → noche → día) en segundos de juego
 
@@ -65,7 +65,8 @@ export class Game {
     const w = window.innerWidth, h = window.innerHeight;
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
-    this.camera.fov = w / h < 0.7 ? 70 : 60; // en pantallas angostas se ven bien los 3 carriles
+    this.baseFov = w / h < 0.7 ? 70 : 60; // en pantallas angostas se ven bien los 3 carriles
+    this.camera.fov = this.baseFov;
     this.camera.updateProjectionMatrix();
   }
 
@@ -98,6 +99,8 @@ export class Game {
   pause() { if (this.state === 'running') this.state = 'paused'; }
   resume() { if (this.state === 'paused') { this.state = 'running'; this.clock.getDelta(); this.focus?.(); } }
   revive() {
+    // al revivir se vuelve a una velocidad un poco menor, para que se pueda retomar
+    this.runTime *= 0.8;
     this.world.clearAhead(this.d - 2, 60);
     this.y = 0; this.vy = 0; this.slideLeft = 0;
     this.invincible = 2.5;
@@ -227,6 +230,11 @@ export class Game {
     fx.bubble.rotation.y = this.time;
     fx.bubble.scale.setScalar(1 + Math.sin(this.time * 4) * 0.03);
 
+    // sensación de velocidad: el ángulo de la cámara se abre un poco al ir más rápido (hasta +9°)
+    const k = this.state === 'running' ? (this.speed - RULES.startSpeed) / (RULES.maxSpeed - RULES.startSpeed) : 0;
+    const fov = this.baseFov + 9 * Math.max(0, Math.min(1, k));
+    if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov += (fov - this.camera.fov) * Math.min(1, dt * 3); this.camera.updateProjectionMatrix(); }
+
     // cámara
     const idle = this.state === 'idle';
     const camTarget = idle
@@ -249,7 +257,8 @@ export class Game {
 
   _step(dt) {
     this.runTime += dt;
-    this.speed = Math.min(RULES.maxSpeed, RULES.startSpeed + RULES.acceleration * this.runTime);
+    // curva suave: sube rápido al principio y cada vez más lento, con tope (shared/speed.js)
+    this.speed = speedAt(this.runTime);
     this.d += this.speed * dt;
 
     const tx = LANES[this.lane];

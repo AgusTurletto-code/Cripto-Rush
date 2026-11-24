@@ -1,12 +1,10 @@
 import fs from 'node:fs';
 import { RULES } from './config.js';
+import { distanceAt } from '../../shared/speed.js';
 
-/** Distancia máxima físicamente posible en `t` segundos. */
+/** Distancia máxima físicamente posible en `t` segundos (misma curva que el juego). */
 export function maxDistance(t) {
-  const { startSpeed: v0, acceleration: a, maxSpeed: vMax } = RULES;
-  const tMax = (vMax - v0) / a;
-  if (t <= tMax) return v0 * t + 0.5 * a * t * t;
-  return v0 * tMax + 0.5 * a * tMax * tMax + vMax * (t - tMax);
+  return distanceAt(t);
 }
 
 /** Máximo de monedas recolectables en una distancia (solo hay una fila de monedas a la vez). */

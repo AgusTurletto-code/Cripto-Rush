@@ -134,22 +134,26 @@ El repo incluye un `Dockerfile`: Railway lo detecta solo.
 
 ## Economía y pagos
 
-Valores por defecto (todos se cambian en `server/.env`):
+### Tasa automática (monedas por dólar)
+El servidor recalcula cada hora cuántas monedas valen 1 USD (`server/src/economy.js`):
 
-| Parámetro | Valor | Significado |
-|---|---|---|
-| `COINS_PER_USD` | 20 000 | 20 000 monedas = 1 USD |
-| `MIN_WITHDRAW_COINS` | 40 000 | retiro mínimo de 2 USD |
-| `DAILY_COIN_CAP` | 0 | sin límite diario (poné un número para limitar lo que gana cada jugador por día) |
-| `MAX_ADS_PER_DAY` | 40 | anuncios con recompensa por jugador por día |
-| `MAX_WITHDRAWALS_PER_DAY` | 1 | |
+```
+monedas por USD = monedas repartidas en 7 días / (ingresos de anuncios en 7 días × REVENUE_SHARE)
+```
 
-**Haz las cuentas con tus datos reales de Monetag.** Si un anuncio te paga ~$0,01 y un jugador
-mira 10 por día, generas ~$0,10 por día con él. Sin tope diario y con multiplicadores de hasta x2,
-un jugador muy activo puede ganar más monedas de lo que generan sus anuncios.
-Lo compensan los jugadores que no llegan al mínimo de retiro y lo que se gasta en personajes,
-pero **mira el panel `/admin`** (monedas en circulación vs. lo que ganas) y ajusta `COINS_PER_USD`,
-los precios y multiplicadores de `shared/characters.json` o `DAILY_COIN_CAP` si los números no dan.
+- **Ingresos:** lo que informa Monetag en cada postback (`estimated_price`).
+- **Monedas repartidas:** partidas + diario + referidos − lo gastado en personajes.
+- Así siempre vuelve a los jugadores el `REVENUE_SHARE` (40 %) de lo que ganás, aunque cambie el CPM.
+- Mientras haya menos de `RATE_MIN_REVENUE` (1 USD) de ingresos, usa la tasa inicial `COINS_PER_USD` (modo *aprendiendo*).
+- La tasa cambia como mucho `RATE_MAX_DAILY_CHANGE` (±20 %) por día: nada de saltos.
+- El retiro mínimo es en dólares (`MIN_WITHDRAW_USD`, 1 USD) y cada retiro usa la tasa del momento.
+- `RATE_MODE=fixed` vuelve a una tasa fija (`COINS_PER_USD`).
+- El panel `/admin` muestra la tasa, el modo y los datos con que se calculó.
+
+### Velocidad
+La curva está en `shared/speed.js` (la usan el juego y el antitrampas del servidor):
+sube rápido al principio y cada vez más despacio hasta acercarse al tope (14 → ~25 al minuto → ~31 a los 2 min → ~38 a los 5 min, tope 40).
+Al revivir, la velocidad baja un poco para poder retomar.
 
 ### Cómo se pagan los retiros
 

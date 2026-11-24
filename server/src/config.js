@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { COIN_SPACING } from '../../shared/speed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -31,9 +32,16 @@ export const config = {
   volumePath: process.env.RAILWAY_VOLUME_MOUNT_PATH || '',
 
   economy: {
-    // Cuántas monedas del juego equivalen a 1 USD. Ajustar según lo que paguen los anuncios.
-    coinsPerUsd: num('COINS_PER_USD', 20000),
-    minWithdrawCoins: num('MIN_WITHDRAW_COINS', 40000), // = 2 USD con la tasa por defecto
+    // Tasa automática (server/src/economy.js): monedas por USD = monedas repartidas / (ingresos × REVENUE_SHARE)
+    rateMode: process.env.RATE_MODE || 'auto',            // 'auto' | 'fixed'
+    coinsPerUsd: num('COINS_PER_USD', 150000),           // tasa inicial (y la fija si RATE_MODE=fixed)
+    revenueShare: num('REVENUE_SHARE', 0.4),             // % de lo ganado con anuncios que vuelve a los jugadores
+    rateWindowDays: num('RATE_WINDOW_DAYS', 7),          // días que se miran para calcular
+    minRevenueForAuto: num('RATE_MIN_REVENUE', 1),       // USD mínimos de ingresos para pasar de "aprendiendo" a automática
+    maxDailyChange: num('RATE_MAX_DAILY_CHANGE', 0.2),   // la tasa cambia como mucho ±20% por día
+    minRate: num('RATE_MIN', 20000),                     // límites de seguridad
+    maxRate: num('RATE_MAX', 5000000),
+    minWithdrawUsd: num('MIN_WITHDRAW_USD', 1),          // retiro mínimo en dólares (las monedas se calculan con la tasa)
     maxWithdrawalsPerDay: num('MAX_WITHDRAWALS_PER_DAY', 1),
     dailyCoinCap: num('DAILY_COIN_CAP', 0), // tope de monedas ganadas por día (0 = sin límite)
     maxAdsPerDay: num('MAX_ADS_PER_DAY', 40),
@@ -61,11 +69,9 @@ export const config = {
 
 // Reglas físicas del juego compartidas con el cliente (client/src/game/rules.js)
 // El servidor las usa para detectar partidas imposibles.
+// La curva de velocidad está en shared/speed.js (la comparten juego y servidor).
 export const RULES = {
-  startSpeed: 14,       // unidades/segundo
-  acceleration: 0.22,   // unidades/segundo²
-  maxSpeed: 38,
-  coinSpacing: 3,       // distancia mínima entre monedas de una misma fila
+  coinSpacing: COIN_SPACING, // distancia mínima entre monedas de una misma fila
   maxRunSeconds: 60 * 30,
 };
 

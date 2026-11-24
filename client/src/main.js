@@ -1,5 +1,5 @@
 import { Game } from './game/game.js';
-import { CHARACTERS } from './game/characters.js';
+import { CHARACTERS, renderPortraits } from './game/characters.js';
 import { api, errMsg, DEMO } from './services/api.js';
 import { initTelegram, haptic, tg } from './services/telegram.js';
 import { showRewardedAd, preloadAds } from './services/ads.js';
@@ -8,7 +8,8 @@ import { initWallet, friendly, short } from './services/wallet.js';
 const ui = document.getElementById('ui');
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = (n) => Math.floor(n).toLocaleString('es');
-const EMOJI = { hank: '🧢', muskrat: '🐀', thump: '🍊', satoshi: '🥷' };
+let PORTRAITS = {};
+const portrait = (id, cls = 'portrait') => `<img class="${cls}" src="${PORTRAITS[id] || ''}" alt="">`;
 
 let user = null;
 let cfg = null;
@@ -47,6 +48,8 @@ const game = new Game(document.getElementById('game'), {
   },
 });
 
+if (location.search.includes('debug')) window.__game = game; // solo para pruebas
+
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && game.state === 'running') { game.pause(); showPause(); }
 });
@@ -64,12 +67,12 @@ function showHome() {
       <div class="pill">🪙 ${fmt(user.balance)} <small>≈ $${usd(user.balance)}</small></div>
       <div class="pill">🏁 ${fmt(user.bestDistance)} m</div>
     </div>
-    <div class="logo"><h1>MOON<br>RUSH</h1><p>Esquiva el mercado bajista. Junta monedas. Llega a la Luna.</p></div>
+    <div class="logo"><h1>CRYPTO<br>RUSH</h1><p>Esquiva el mercado bajista. Junta monedas. Hazte rico.</p></div>
     <div class="spacer"></div>
     <div class="home-actions">
       <button class="btn primary" id="play">▶ JUGAR</button>
       <div class="row">
-        <button class="btn" id="chars">${EMOJI[user.character]} Personajes</button>
+        <button class="btn btn-icon" id="chars">${portrait(user.character, 'mini')} Personajes</button>
         <button class="btn green" id="wallet">💸 Retirar</button>
       </div>
       ${DEMO ? '<div class="hint" style="color:var(--gold)">🧪 Versión demo: anuncios simulados y retiros de prueba</div>' : ''}
@@ -225,7 +228,7 @@ function showCharacters() {
     const price = cfg.characters[id]?.price ?? 0;
     const sel = user.character === id;
     return `<div class="card ${sel ? 'sel' : ''}">
-      <div class="emoji">${EMOJI[id]}</div><h3>${esc(c.name)}</h3><p>${esc(c.desc)}</p>
+      ${portrait(id)}<h3>${esc(c.name)}</h3><p>${esc(c.desc)}</p>
       <button class="btn ${owned ? '' : 'primary'}" data-id="${id}" data-preview="${id}" ${sel ? 'disabled' : ''}>
         ${sel ? 'En uso' : owned ? 'Usar' : '🪙 ' + fmt(price)}</button></div>`;
   }).join('');
@@ -321,6 +324,7 @@ async function boot() {
   showLoading();
   try {
     [cfg, user] = await Promise.all([api.config(), api.login()]);
+    try { PORTRAITS = renderPortraits(); } catch { /* sin WebGL extra: quedan sin imagen */ }
     showHome();
   } catch (e) {
     render(`<div class="loading"><div style="text-align:center;padding:16px">😵 ${esc(errMsg(e))}<br><br>

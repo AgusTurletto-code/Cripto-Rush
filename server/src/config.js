@@ -23,7 +23,7 @@ export const config = {
   adminKey: process.env.ADMIN_KEY || '',
   // DEV_MODE=1 permite jugar desde un navegador normal sin Telegram (usuario falso).
   devMode: process.env.DEV_MODE === '1',
-  dbPath: process.env.DB_PATH || path.resolve(__dirname, '../data/moonrush.db'),
+  dbPath: process.env.DB_PATH || path.resolve(__dirname, '../data/cryptorush.db'),
 
   economy: {
     // Cuántas monedas del juego equivalen a 1 USD. Ajustar según lo que paguen los anuncios.

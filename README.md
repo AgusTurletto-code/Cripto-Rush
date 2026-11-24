@@ -1,11 +1,11 @@
-# 🚀 Moon Rush
+# 🚀 Crypto Rush
 
 Endless runner 3D con temática cripto/política para **Telegram Mini Apps**.
 Los jugadores juntan monedas, las duplican o reviven con **anuncios con recompensa de Monetag**
 y las canjean por **USDT o TON** en su wallet.
 
 ```
-moon-rush/
+crypto-rush/
 ├── client/                 # Juego (Vite + Three.js + TON Connect)
 │   ├── src/game/           # motor: world.js (pista), game.js (física), characters.js
 │   ├── src/services/       # api, anuncios Monetag, Telegram, wallet

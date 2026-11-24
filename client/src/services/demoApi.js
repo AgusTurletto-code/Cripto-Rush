@@ -1,6 +1,6 @@
 // API simulada para la versión demo (VITE_DEMO=1): todo se guarda en el navegador.
 // No sirve para producción: el jugador podría editar su saldo.
-const KEY = 'moonrush-demo';
+const KEY = 'cryptorush-demo';
 const CFG = {
   coinsPerUsd: 20000, minWithdrawCoins: 40000, dailyCoinCap: 6000, devMode: true,
   currencies: ['USDT_TON', 'TON'],

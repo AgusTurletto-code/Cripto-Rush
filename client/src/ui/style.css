@@ -93,7 +93,9 @@ button { font: inherit; color: inherit; border: 0; cursor: pointer; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .card { background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 14px 12px; text-align: center; }
 .card.sel { border-color: var(--btc); }
-.card .emoji { font-size: 40px; }
+.card .portrait { display: block; width: 100%; max-width: 140px; aspect-ratio: 1; margin: -6px auto 0; border-radius: 12px; background: radial-gradient(circle at 50% 40%, rgba(255,197,49,.25), transparent 70%); }
+.btn-icon { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.mini { width: 34px; height: 34px; margin: -8px 0; }
 .card h3 { margin: 6px 0 4px; font-size: 15px; }
 .card p { margin: 0 0 10px; font-size: 12px; color: var(--muted); min-height: 30px; }
 .card .btn { width: 100%; padding: 10px; font-size: 14px; }

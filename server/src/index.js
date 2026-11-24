@@ -305,5 +305,5 @@ app.use(express.static(dist));
 app.get('*', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
 
 app.listen(config.port, () => {
-  console.log(`🚀 Moon Rush server en http://localhost:${config.port}  (devMode=${config.devMode}, ads=${config.adVerifyMode})`);
+  console.log(`🚀 Crypto Rush server en http://localhost:${config.port}  (devMode=${config.devMode}, ads=${config.adVerifyMode})`);
 });

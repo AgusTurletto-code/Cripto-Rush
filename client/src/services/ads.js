@@ -14,6 +14,19 @@ function loadSdk() {
   if (!ZONE) return Promise.resolve();
   if (window[fnName]) return Promise.resolve();
   if (loading) return loading;
+  // La etiqueta ya viene en el HTML (vite.config.js la agrega): esperar a que termine de cargar
+  const existing = document.querySelector(`script[data-sdk="${fnName}"]`);
+  if (existing) {
+    loading = new Promise((resolve, reject) => {
+      let waited = 0;
+      const t = setInterval(() => {
+        waited += 100;
+        if (window[fnName]) { clearInterval(t); resolve(); }
+        else if (waited >= 8000) { clearInterval(t); loading = null; reject(new Error('ad_sdk_failed')); }
+      }, 100);
+    });
+    return loading;
+  }
   loading = new Promise((resolve, reject) => {
     const s = document.createElement('script');
     s.src = 'https://libtl.com/sdk.js';

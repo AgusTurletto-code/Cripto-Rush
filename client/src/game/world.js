@@ -91,6 +91,32 @@ const crashTex = canvasTexture(512, 512, (g, w, h) => {
   g.fillText('CRASH', w / 2, 52);
   g.fillStyle = '#ff3b3b'; g.font = '900 64px monospace'; g.textAlign = 'left'; g.fillText('-90%', 24, 470);
 });
+const rugTex = canvasTexture(512, 320, (g, w, h) => {
+  // alfombra persa roja con borde dorado y el texto RUG PULL
+  g.fillStyle = '#9b1b30'; g.fillRect(0, 0, w, h);
+  g.strokeStyle = '#f2c14e'; g.lineWidth = 14; g.strokeRect(14, 14, w - 28, h - 28);
+  g.strokeStyle = '#1d3557'; g.lineWidth = 6; g.strokeRect(34, 34, w - 68, h - 68);
+  g.fillStyle = '#f2c14e';
+  for (let x = 50; x < w - 40; x += 36) { g.beginPath(); g.moveTo(x, 44); g.lineTo(x + 9, 54); g.lineTo(x, 64); g.lineTo(x - 9, 54); g.fill(); }
+  for (let x = 50; x < w - 40; x += 36) { g.beginPath(); g.moveTo(x, h - 64); g.lineTo(x + 9, h - 54); g.lineTo(x, h - 44); g.lineTo(x - 9, h - 54); g.fill(); }
+  g.fillStyle = '#1d3557'; g.beginPath(); g.ellipse(w / 2, h / 2, 190, 78, 0, 0, 7); g.fill();
+  g.strokeStyle = '#f2c14e'; g.lineWidth = 6; g.stroke();
+  g.fillStyle = '#fff'; g.font = '900 68px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('RUG PULL', w / 2, h / 2 + 4);
+});
+const rugRollTex = canvasTexture(256, 64, (g, w, h) => {
+  g.fillStyle = '#9b1b30'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#f2c14e'; for (let y = 6; y < h; y += 16) g.fillRect(0, y, w, 4);
+  g.fillStyle = '#1d3557'; for (let x = 0; x < w; x += 32) g.fillRect(x, 0, 10, h);
+}, true);
+const secTex = canvasTexture(512, 192, (g, w, h) => {
+  g.fillStyle = '#0d2b6b'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#fff';
+  for (let x = -h; x < w + h; x += 56) { g.beginPath(); g.moveTo(x, h); g.lineTo(x + 18, h); g.lineTo(x + 18 + h * 0.25, h - 26); g.lineTo(x + h * 0.25, h - 26); g.fill(); }
+  g.fillStyle = '#fff'; g.font = '900 96px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('⚠ SEC', w / 2, 72);
+  g.font = 'bold 34px sans-serif'; g.fillStyle = '#ffd60a'; g.fillText('INVESTIGACIÓN EN CURSO', w / 2, 136);
+});
 const jerseyTex = canvasTexture(256, 64, (g, w, h) => {
   g.fillStyle = '#c9c9c9'; g.fillRect(0, 0, w, h);
   for (let x = -h; x < w + h; x += 48) { g.fillStyle = '#e01e1e'; g.beginPath(); g.moveTo(x, h); g.lineTo(x + 24, h); g.lineTo(x + 24 + h, 0); g.lineTo(x + h, 0); g.fill(); }
@@ -183,6 +209,15 @@ const M = {
   jersey: toon(0xffffff, { map: jerseyTex }),
   metal: toon(0x37474f),
   alarm: new THREE.MeshBasicMaterial({ color: 0xff2020 }),
+  rug: toon(0xffffff, { map: rugTex, side: THREE.DoubleSide }),
+  rugRoll: toon(0xffffff, { map: rugRollTex }),
+  sec: new THREE.MeshBasicMaterial({ map: secTex, side: THREE.DoubleSide }),
+  drone: toon(0x263238),
+  droneLight: toon(0xeceff1),
+  rotor: new THREE.MeshBasicMaterial({ color: 0xb0bec5, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false }),
+  policeRed: new THREE.MeshBasicMaterial({ color: 0xff1a1a }),
+  policeBlue: new THREE.MeshBasicMaterial({ color: 0x1a5cff }),
+  cable: new THREE.MeshBasicMaterial({ color: 0x222222 }),
   pole: toon(0x3a3f4f),
   bulb: new THREE.MeshBasicMaterial({ color: 0xfff0c0 }),
   roof: toon(0x4b5263),
@@ -222,11 +257,71 @@ export const OBSTACLE_TYPES = {
 };
 
 // Los muros tienen muchas piezas: se arman una vez y después se clonan (comparten geometría y materiales)
-const wallTemplates = {};
-function wallTemplate(variant) {
-  if (!wallTemplates[variant]) wallTemplates[variant] = variant === 'bear' ? buildBear() : buildCrashWall();
-  if (variant === 'bear') wallTemplates[variant].scale.set(1.2, 1.12, 1.0); // más imponente (sigue dentro del carril)
-  return wallTemplates[variant];
+const templates = {};
+function template(variant) {
+  if (!templates[variant]) {
+    const build = { bear: buildBear, crash: buildCrashWall, rug: buildRugPull, drone: buildSecDrone }[variant];
+    templates[variant] = build();
+    if (variant === 'bear') templates[variant].scale.set(1.2, 1.12, 1.0); // más imponente (sigue dentro del carril)
+  }
+  return templates[variant];
+}
+
+/** Variantes visuales de cada tipo de obstáculo (la colisión depende solo del tipo). */
+export const VARIANTS = { low: ['candles', 'rug'], high: ['audit', 'drone'], wall: ['bear', 'crash'] };
+
+/** RUG PULL: alfombra persa que se enrolla (hay que saltarla). */
+function buildRugPull() {
+  const g = new THREE.Group();
+  // parte estirada en el piso, levantándose hacia el rollo
+  const flat = part(G.plane, M.rug, [0, 0.03, 0.95], [2.1, 2.0, 1]);
+  flat.rotation.x = -Math.PI / 2; g.add(flat);
+  const lift = part(G.plane, M.rug, [0, 0.35, -0.2], [2.1, 0.8, 1]);
+  lift.rotation.x = -0.6; lift.material = M.rugRoll; g.add(lift);
+  // rollo grande (el obstáculo)
+  const roll = outlined(new THREE.CylinderGeometry(0.42, 0.42, 2.15, 20).rotateZ(Math.PI / 2), M.rugRoll, 0.04);
+  roll.position.set(0, 0.5, -0.35); roll.name = 'rugRoll'; g.add(roll);
+  for (const x of [-1.08, 1.08]) { // espiral en las puntas
+    const end = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.07, 6, 16).rotateY(Math.PI / 2), M.rug);
+    end.position.set(x, 0.5, -0.35); g.add(end);
+  }
+  // flecos dorados
+  for (let x = -0.95; x <= 0.96; x += 0.19) g.add(part(G.box, M.coinEdge, [x, 0.02, 2.0], [0.05, 0.02, 0.16]));
+  g.traverse((o) => (o.frustumCulled = false));
+  return g;
+}
+
+/** Dron de la SEC con luces de policía y cartel colgante (hay que deslizarse por debajo). */
+function buildSecDrone() {
+  const g = new THREE.Group();
+  const drone = new THREE.Group(); drone.name = 'drone'; drone.position.y = 2.75; g.add(drone);
+  const body = outlined(new THREE.CapsuleGeometry(0.28, 0.6, 4, 12).rotateZ(Math.PI / 2), M.drone, 0.03);
+  body.scale.set(1, 0.8, 1.2); drone.add(body);
+  drone.add(part(G.box, M.droneLight, [0, 0.2, 0], [0.6, 0.08, 0.4]));
+  // ojo-cámara rojo
+  drone.add(part(G.sphere, M.droneLight, [0, -0.05, 0.33], [0.16, 0.16, 0.1]));
+  drone.add(part(G.sphere, M.alarm, [0, -0.05, 0.4], [0.08, 0.08, 0.05]));
+  // luces de policía
+  drone.add(part(G.box, M.policeRed, [-0.22, 0.3, 0], [0.22, 0.12, 0.16]));
+  drone.add(part(G.box, M.policeBlue, [0.22, 0.3, 0], [0.22, 0.12, 0.16]));
+  const gr = new THREE.Sprite(glowMat(0xff1a1a, 0.8)); gr.position.set(-0.22, 0.32, 0); gr.scale.setScalar(1.1); gr.name = 'glowRed'; drone.add(gr);
+  const gb = new THREE.Sprite(glowMat(0x1a5cff, 0.8)); gb.position.set(0.22, 0.32, 0); gb.scale.setScalar(1.1); gb.name = 'glowBlue'; drone.add(gb);
+  // brazos y hélices
+  for (const [x, z] of [[-0.95, 0.35], [0.95, 0.35], [-0.95, -0.35], [0.95, -0.35]]) {
+    const arm = part(G.box, M.drone, [x / 2, 0.05, z / 2], [Math.hypot(x, z), 0.07, 0.07]);
+    arm.rotation.y = -Math.atan2(z, x); drone.add(arm);
+    drone.add(part(G.cyl, M.drone, [x, 0.12, z], [0.07, 0.16, 0.07]));
+    const rotor = new THREE.Mesh(new THREE.CircleGeometry(0.36, 20), M.rotor);
+    rotor.rotation.x = -Math.PI / 2; rotor.position.set(x, 0.21, z); drone.add(rotor);
+    const blade = part(G.box, M.drone, [x, 0.21, z], [0.7, 0.02, 0.06]); blade.name = 'blade'; drone.add(blade);
+  }
+  // cartel colgante (su borde inferior queda por encima del jugador agachado)
+  for (const x of [-0.85, 0.85]) drone.add(part(G.cyl, M.cable, [x * 0.6, -0.35, 0], [0.015, 0.5, 0.015]));
+  drone.add(part(G.box, M.drone, [0, -0.62, 0], [2.2, 0.06, 0.06]));
+  const banner = part(G.plane, M.sec, [0, -0.98, 0], [2.15, 0.76, 1]);
+  drone.add(banner);
+  g.traverse((o) => (o.frustumCulled = false));
+  return g;
 }
 
 /** Oso bajista gigante: traje, corbata roja y cartel de SELL. */
@@ -299,9 +394,11 @@ function buildCrashWall() {
   return g;
 }
 
-function makeObstacle(type, variant = 'bear') {
+function makeObstacle(type, variant) {
   const g = new THREE.Group();
-  if (type === 'low') {
+  if (variant === 'rug' || variant === 'drone') {
+    g.add(template(variant).clone());
+  } else if (type === 'low') {
     g.add(part(G.box, M.candleDark, [0, 0.07, 0], [2.1, 0.14, 0.7]));
     [[-0.62, 0.55], [0, 0.82], [0.62, 0.66]].forEach(([x, h]) => {
       g.add(part(G.cyl, M.wick, [x, 0.14 + h / 2 + 0.06, 0], [0.04, h + 0.3, 0.04]));
@@ -315,7 +412,7 @@ function makeObstacle(type, variant = 'bear') {
     }
     g.add(part(G.box, M.audit, [0, 1.9, 0], [2.3, 1.1, 0.16]));
   } else {
-    g.add(wallTemplate(variant).clone());
+    g.add(template(variant).clone());
   }
   g.traverse((o) => (o.frustumCulled = false));
   return g;
@@ -581,11 +678,13 @@ export class World {
     for (let l = 0; l < 3; l++) {
       if (!types[l]) continue;
       // la variante visual sale del rng de decoración: no cambia el recorrido de la partida
-      const variant = types[l] === 'wall' ? (this.decoRng.chance(0.5) ? 'bear' : 'crash') : null;
+      const variant = this.decoRng.pick(VARIANTS[types[l]]);
       const mesh = makeObstacle(types[l], variant);
       mesh.position.set(LANES[l], 0, -d);
       this.root.add(mesh);
-      this.obstacles.push({ mesh, lane: l, type: types[l], d, anim: mesh.getObjectByName('bearUpper') });
+      const anim = { variant, main: mesh.getObjectByName({ bear: 'bearUpper', drone: 'drone', rug: 'rugRoll' }[variant] || '-'), blades: [] };
+      if (variant === 'drone') mesh.traverse((o) => { if (o.name === 'blade') anim.blades.push(o); });
+      this.obstacles.push({ mesh, lane: l, type: types[l], variant, d, anim: anim.main ? anim : null });
     }
 
     const free = [0, 1, 2].filter((l) => !types[l]);
@@ -776,10 +875,22 @@ export class World {
     M.lightOn.color.setHex(blinkOn ? 0xff8a00 : 0x552200);
     M.alarm.color.setHex(Math.sin(time * 9) > 0 ? 0xff2020 : 0x501010);
     // el oso se balancea y agita el cartel
+    const police = Math.sin(time * 10) > 0;
+    M.policeRed.color.setHex(police ? 0xff1a1a : 0x4a0a0a);
+    M.policeBlue.color.setHex(police ? 0x0a1a4a : 0x1a5cff);
     for (const o of this.obstacles) {
       if (!o.anim) continue;
-      o.anim.rotation.z = Math.sin(time * 3 + o.d) * 0.07;
-      o.anim.position.y = 1.9 + Math.abs(Math.sin(time * 6 + o.d)) * 0.06;
+      const a = o.anim;
+      if (a.variant === 'bear') { // se balancea y agita el cartel
+        a.main.rotation.z = Math.sin(time * 3 + o.d) * 0.07;
+        a.main.position.y = 1.9 + Math.abs(Math.sin(time * 6 + o.d)) * 0.06;
+      } else if (a.variant === 'drone') { // flota y gira las hélices
+        a.main.position.y = 2.75 + Math.sin(time * 4 + o.d) * 0.05;
+        a.main.rotation.z = Math.sin(time * 2 + o.d) * 0.04;
+        for (const b of a.blades) b.rotation.y = time * 40;
+      } else if (a.variant === 'rug') { // el rollo tiembla como si lo tiraran
+        a.main.rotation.x = Math.sin(time * 12 + o.d) * 0.08;
+      }
     }
 
     this.particles.update(dt);

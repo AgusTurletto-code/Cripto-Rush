@@ -26,8 +26,8 @@ crypto-rush/
 | Acción | Celular | PC |
 |---|---|---|
 | Cambiar de carril | deslizar ⬅️ ➡️ | ← → / A D |
-| Saltar (velas rojas) | deslizar ⬆️ | ↑ / W / espacio |
-| Deslizarse (banners TAX AUDIT) | deslizar ⬇️ | ↓ / S |
+| Saltar (velas rojas, RUG PULL) | deslizar ⬆️ | ↑ / W / espacio |
+| Deslizarse (TAX AUDIT, dron de la SEC) | deslizar ⬇️ | ↓ / S |
 | Oso bajista / muro CRASH | hay que esquivarlos de carril | |
 
 Power-ups: 🐋 Ballena imán · 🚀 To the Moon (vuelo) · 🛡️ Escudo HODL.
@@ -85,7 +85,11 @@ Si vas a modificar el juego, corre también `cd client && npm run dev` (http://l
 5. **TON Connect:** edita `client/public/tonconnect-manifest.json` con tu dominio real y sube un `icon.png` (180×180) a `client/public/`.
 6. **Monetag:**
    - En [monetag.com](https://monetag.com) agrega tu Mini App y crea una zona **Rewarded Interstitial**.
-   - Pon el ID de la zona en `client/.env`: `VITE_MONETAG_ZONE=1234567`. Después vuelve a compilar el cliente.
+   - Monetag te muestra una etiqueta como `<script src='//libtl.com/sdk.js' data-zone='1234567' data-sdk='show_1234567'></script>`.
+     **No hace falta pegarla a mano:** copia solo el número (`1234567`) en `client/.env` como `VITE_MONETAG_ZONE=1234567`,
+     compila (`npm run build`) y vuelve a subir el juego. La etiqueta queda escrita en el HTML automáticamente.
+   - Para que Monetag la verifique, el juego tiene que estar publicado en internet (con HTTPS) y abrirse desde tu bot.
+     Recién entonces aprieta el botón de verificar en Monetag.
    - *(Recomendado)* Configura el **postback** de Monetag apuntando a
      `https://TU-DOMINIO/api/ads/postback?ymid={ymid}&secret=TU_SECRETO` y en el servidor pon
      `AD_VERIFY_MODE=postback` y `AD_POSTBACK_SECRET=TU_SECRETO`.

@@ -1,0 +1,309 @@
+import crypto from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import express from 'express';
+import { config } from './config.js';
+import { db, tx } from './db.js';
+import { validateInitData, signSession, verifySession } from './auth.js';
+import { checkRun, CHARACTERS } from './game.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const app = express();
+app.set('trust proxy', 1);
+app.use(express.json({ limit: '20kb' }));
+
+const now = () => Date.now();
+const DAY = 24 * 3600 * 1000;
+const startOfDay = () => { const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d.getTime(); };
+
+class ApiError extends Error {
+  constructor(status, code) { super(code); this.status = status; this.code = code; }
+}
+const wrap = (fn) => (req, res) => {
+  try {
+    const out = fn(req, res);
+    if (out !== undefined) res.json(out);
+  } catch (e) {
+    if (e instanceof ApiError) return res.status(e.status).json({ error: e.code });
+    console.error(e);
+    res.status(500).json({ error: 'server_error' });
+  }
+};
+
+// ---------- Usuarios ----------
+const getUser = db.prepare('SELECT * FROM users WHERE id = ?');
+
+function publicUser(u) {
+  const earnedToday = db.prepare(
+    `SELECT COALESCE(SUM(credited),0) AS s FROM runs WHERE user_id = ? AND ended_at >= ?`
+  ).get(u.id, startOfDay()).s;
+  return {
+    id: u.id,
+    name: u.first_name || u.username || 'Jugador',
+    balance: u.balance,
+    totalEarned: u.total_earned,
+    bestDistance: u.best_distance,
+    wallet: u.wallet,
+    character: u.character,
+    owned: JSON.parse(u.owned),
+    earnedToday,
+  };
+}
+
+function auth(req, _res, next) {
+  const token = (req.headers.authorization || '').replace(/^Bearer /, '');
+  const userId = verifySession(token);
+  if (!userId) return next(new ApiError(401, 'unauthorized'));
+  const user = getUser.get(userId);
+  if (!user) return next(new ApiError(401, 'unauthorized'));
+  if (user.banned) return next(new ApiError(403, 'banned'));
+  req.user = user;
+  next();
+}
+
+// ---------- Rutas públicas ----------
+app.get('/api/config', wrap(() => ({
+  coinsPerUsd: config.economy.coinsPerUsd,
+  minWithdrawCoins: config.economy.minWithdrawCoins,
+  dailyCoinCap: config.economy.dailyCoinCap,
+  currencies: config.economy.currencies,
+  characters: CHARACTERS,
+  devMode: config.devMode,
+})));
+
+app.post('/api/auth', wrap((req) => {
+  let tgUser = validateInitData(req.body?.initData);
+  if (!tgUser && config.devMode) {
+    tgUser = { id: req.body?.devUserId || 'dev-1', first_name: 'Dev', username: 'dev' };
+  }
+  if (!tgUser) throw new ApiError(401, 'invalid_init_data');
+
+  const id = String(tgUser.id);
+  db.prepare(`
+    INSERT INTO users (id, username, first_name, created_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET username = excluded.username, first_name = excluded.first_name
+  `).run(id, tgUser.username || null, tgUser.first_name || null, now());
+
+  return { token: signSession(id), user: publicUser(getUser.get(id)) };
+}));
+
+// Monetag llama a esta URL cuando un anuncio con recompensa se vio completo (configurar en su panel).
+// Ej: https://tu-dominio.com/api/ads/postback?ymid={ymid}&secret=TU_SECRETO
+app.get('/api/ads/postback', wrap((req) => {
+  if (config.adPostbackSecret && req.query.secret !== config.adPostbackSecret) {
+    throw new ApiError(403, 'bad_secret');
+  }
+  const ymid = String(req.query.ymid || '');
+  if (!ymid) throw new ApiError(400, 'missing_ymid');
+  db.prepare('INSERT OR IGNORE INTO ad_postbacks (ymid, created_at) VALUES (?, ?)').run(ymid, now());
+  return { ok: true };
+}));
+
+// ---------- Rutas autenticadas ----------
+const api = express.Router();
+api.use(auth);
+
+api.get('/me', wrap((req) => publicUser(req.user)));
+
+api.post('/run/start', wrap((req) => {
+  // cierra partidas viejas que quedaron abiertas
+  db.prepare(`UPDATE runs SET status='rejected', reject_reason='abandoned', ended_at=?
+              WHERE user_id=? AND status='active'`).run(now(), req.user.id);
+  const id = crypto.randomUUID();
+  const seed = crypto.randomInt(1, 2 ** 31 - 1);
+  db.prepare('INSERT INTO runs (id, user_id, seed, started_at) VALUES (?, ?, ?, ?)')
+    .run(id, req.user.id, seed, now());
+  return { runId: id, seed };
+}));
+
+function getActiveRun(userId, runId) {
+  const run = db.prepare('SELECT * FROM runs WHERE id = ? AND user_id = ?').get(runId, userId);
+  if (!run) throw new ApiError(404, 'run_not_found');
+  if (run.status !== 'active') throw new ApiError(409, 'run_closed');
+  return run;
+}
+
+/**
+ * El cliente llama acá después de que el anuncio de Monetag terminó.
+ * type = 'revive' (máx 1 por partida) | 'double' (máx 1 por partida)
+ */
+api.post('/ads/claim', wrap((req) => {
+  const { runId, type, ymid } = req.body || {};
+  if (!['revive', 'double'].includes(type)) throw new ApiError(400, 'bad_type');
+  const run = getActiveRun(req.user.id, runId);
+
+  const adsToday = db.prepare('SELECT COUNT(*) AS c FROM ad_events WHERE user_id = ? AND created_at >= ?')
+    .get(req.user.id, now() - DAY).c;
+  if (adsToday >= config.economy.maxAdsPerDay) throw new ApiError(429, 'ad_limit');
+
+  if (type === 'revive' && run.revives >= 1) throw new ApiError(409, 'already_revived');
+  if (type === 'double' && run.doubled) throw new ApiError(409, 'already_doubled');
+
+  let verified = 0;
+  if (config.adVerifyMode === 'postback') {
+    const expected = `${run.id}:${type}`;
+    if (ymid !== expected || !db.prepare('SELECT 1 FROM ad_postbacks WHERE ymid = ?').get(expected)) {
+      throw new ApiError(402, 'ad_not_verified');
+    }
+    verified = 1;
+  }
+
+  tx(() => {
+    db.prepare('INSERT INTO ad_events (user_id, run_id, type, verified, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(req.user.id, run.id, type, verified, now());
+    if (type === 'revive') db.prepare('UPDATE runs SET revives = revives + 1 WHERE id = ?').run(run.id);
+    else db.prepare('UPDATE runs SET doubled = 1 WHERE id = ?').run(run.id);
+  });
+  return { ok: true };
+}));
+
+api.post('/run/end', wrap((req) => {
+  const { runId } = req.body || {};
+  const coins = Number(req.body?.coins);
+  const distance = Number(req.body?.distance);
+  const run = getActiveRun(req.user.id, runId);
+  const serverSeconds = (now() - run.started_at) / 1000;
+
+  const reason = checkRun({ coins, distance, serverSeconds });
+  if (reason) {
+    db.prepare(`UPDATE runs SET status='rejected', reject_reason=?, ended_at=?, coins=?, distance=? WHERE id=?`)
+      .run(reason, now(), coins | 0, distance | 0, run.id);
+    console.warn(`[anticheat] user=${req.user.id} run=${run.id} ${reason} coins=${coins} dist=${distance} t=${serverSeconds}`);
+    throw new ApiError(422, 'run_rejected');
+  }
+
+  return tx(() => {
+    const earnedToday = db.prepare(
+      'SELECT COALESCE(SUM(credited),0) AS s FROM runs WHERE user_id = ? AND ended_at >= ?'
+    ).get(req.user.id, startOfDay()).s;
+    const gross = run.doubled ? coins * 2 : coins;
+    const credited = Math.max(0, Math.min(gross, config.economy.dailyCoinCap - earnedToday));
+
+    db.prepare(`UPDATE runs SET status='finished', ended_at=?, coins=?, distance=?, credited=? WHERE id=?`)
+      .run(now(), coins, Math.floor(distance), credited, run.id);
+    db.prepare(`UPDATE users SET balance = balance + ?, total_earned = total_earned + ?,
+                best_distance = MAX(best_distance, ?) WHERE id = ?`)
+      .run(credited, credited, Math.floor(distance), req.user.id);
+
+    return {
+      credited,
+      capped: credited < gross,
+      doubled: !!run.doubled,
+      user: publicUser(getUser.get(req.user.id)),
+    };
+  });
+}));
+
+api.post('/character/buy', wrap((req) => {
+  const id = req.body?.id;
+  const ch = CHARACTERS[id];
+  if (!ch) throw new ApiError(404, 'no_character');
+  return tx(() => {
+    const u = getUser.get(req.user.id);
+    const owned = JSON.parse(u.owned);
+    if (!owned.includes(id)) {
+      if (u.balance < ch.price) throw new ApiError(402, 'not_enough_coins');
+      owned.push(id);
+      db.prepare('UPDATE users SET balance = balance - ?, owned = ? WHERE id = ?')
+        .run(ch.price, JSON.stringify(owned), u.id);
+    }
+    db.prepare('UPDATE users SET character = ? WHERE id = ?').run(id, u.id);
+    return publicUser(getUser.get(u.id));
+  });
+}));
+
+api.post('/wallet', wrap((req) => {
+  const address = String(req.body?.address || '').trim();
+  // Direcciones TON: formato raw (0:hex) o "user-friendly" base64url de 48 caracteres
+  if (!/^(-?\d:[0-9a-fA-F]{64}|[A-Za-z0-9_\-+/]{48})$/.test(address)) throw new ApiError(400, 'bad_address');
+  db.prepare('UPDATE users SET wallet = ? WHERE id = ?').run(address, req.user.id);
+  return publicUser(getUser.get(req.user.id));
+}));
+
+api.get('/withdrawals', wrap((req) =>
+  db.prepare('SELECT id, coins, usd_cents, currency, status, tx_hash, created_at FROM withdrawals WHERE user_id = ? ORDER BY id DESC LIMIT 20')
+    .all(req.user.id)
+));
+
+api.post('/withdraw', wrap((req) => {
+  const coins = Math.floor(Number(req.body?.coins));
+  const currency = req.body?.currency;
+  const e = config.economy;
+  if (!e.currencies.includes(currency)) throw new ApiError(400, 'bad_currency');
+  if (!Number.isFinite(coins) || coins < e.minWithdrawCoins) throw new ApiError(400, 'below_minimum');
+
+  return tx(() => {
+    const u = getUser.get(req.user.id);
+    if (!u.wallet) throw new ApiError(400, 'no_wallet');
+    if (u.balance < coins) throw new ApiError(402, 'not_enough_coins');
+    const recent = db.prepare(`SELECT COUNT(*) AS c FROM withdrawals WHERE user_id = ? AND created_at >= ? AND status != 'rejected'`)
+      .get(u.id, now() - DAY).c;
+    if (recent >= e.maxWithdrawalsPerDay) throw new ApiError(429, 'withdraw_limit');
+
+    const usdCents = Math.floor((coins / e.coinsPerUsd) * 100);
+    db.prepare('UPDATE users SET balance = balance - ? WHERE id = ?').run(coins, u.id);
+    db.prepare(`INSERT INTO withdrawals (user_id, coins, usd_cents, currency, wallet, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(u.id, coins, usdCents, currency, u.wallet, now());
+    return { ok: true, usdCents, user: publicUser(getUser.get(u.id)) };
+  });
+}));
+
+// ---------- Admin (header x-admin-key) ----------
+const admin = express.Router();
+admin.use((req, _res, next) => {
+  if (!config.adminKey || req.headers['x-admin-key'] !== config.adminKey) return next(new ApiError(403, 'forbidden'));
+  next();
+});
+admin.get('/withdrawals', wrap((req) =>
+  db.prepare(`SELECT w.*, u.username, u.first_name, u.total_earned,
+              (SELECT COUNT(*) FROM runs r WHERE r.user_id = w.user_id AND r.status='rejected') AS rejected_runs
+              FROM withdrawals w JOIN users u ON u.id = w.user_id
+              WHERE w.status = ? ORDER BY w.id`).all(req.query.status || 'pending')
+));
+admin.post('/withdrawals/:id', wrap((req) => {
+  const { action, txHash, note } = req.body || {};
+  return tx(() => {
+    const w = db.prepare('SELECT * FROM withdrawals WHERE id = ?').get(Number(req.params.id));
+    if (!w || w.status !== 'pending') throw new ApiError(404, 'not_pending');
+    if (action === 'paid') {
+      db.prepare(`UPDATE withdrawals SET status='paid', tx_hash=?, note=?, processed_at=? WHERE id=?`)
+        .run(txHash || null, note || null, now(), w.id);
+    } else if (action === 'reject') {
+      db.prepare(`UPDATE withdrawals SET status='rejected', note=?, processed_at=? WHERE id=?`)
+        .run(note || null, now(), w.id);
+      db.prepare('UPDATE users SET balance = balance + ? WHERE id = ?').run(w.coins, w.user_id); // devuelve monedas
+    } else throw new ApiError(400, 'bad_action');
+    return { ok: true };
+  });
+}));
+admin.get('/stats', wrap(() => ({
+  users: db.prepare('SELECT COUNT(*) c FROM users').get().c,
+  runs24h: db.prepare('SELECT COUNT(*) c FROM runs WHERE started_at >= ?').get(now() - DAY).c,
+  ads24h: db.prepare('SELECT COUNT(*) c FROM ad_events WHERE created_at >= ?').get(now() - DAY).c,
+  rejectedRuns24h: db.prepare(`SELECT COUNT(*) c FROM runs WHERE status='rejected' AND reject_reason!='abandoned' AND started_at >= ?`).get(now() - DAY).c,
+  coinsOutstanding: db.prepare('SELECT COALESCE(SUM(balance),0) s FROM users').get().s,
+  pendingUsdCents: db.prepare(`SELECT COALESCE(SUM(usd_cents),0) s FROM withdrawals WHERE status='pending'`).get().s,
+  paidUsdCents: db.prepare(`SELECT COALESCE(SUM(usd_cents),0) s FROM withdrawals WHERE status='paid'`).get().s,
+})));
+admin.post('/users/:id/ban', wrap((req) => {
+  db.prepare('UPDATE users SET banned = ? WHERE id = ?').run(req.body?.banned === false ? 0 : 1, req.params.id);
+  return { ok: true };
+}));
+app.use('/api/admin', admin);
+app.use('/api', api);
+
+app.use('/api', (err, _req, res, _next) => {
+  if (err instanceof ApiError) return res.status(err.status).json({ error: err.code });
+  console.error(err);
+  res.status(500).json({ error: 'server_error' });
+});
+
+// ---------- Archivos estáticos (cliente compilado + panel admin) ----------
+app.get('/admin', (_req, res) => res.sendFile(path.resolve(__dirname, 'admin.html')));
+const dist = path.resolve(__dirname, '../../client/dist');
+app.use(express.static(dist));
+app.get('*', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+
+app.listen(config.port, () => {
+  console.log(`🚀 Moon Rush server en http://localhost:${config.port}  (devMode=${config.devMode}, ads=${config.adVerifyMode})`);
+});

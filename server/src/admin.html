@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Moon Rush Admin</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#0d1117;color:#e6edf3;margin:0;padding:16px}
+  input,button,select{font:inherit;padding:6px 10px;border-radius:6px;border:1px solid #30363d;background:#161b22;color:inherit}
+  button{cursor:pointer;background:#238636;border-color:#238636}
+  button.red{background:#da3633;border-color:#da3633}
+  table{border-collapse:collapse;width:100%;margin-top:12px;font-size:14px}
+  td,th{border-bottom:1px solid #30363d;padding:6px;text-align:left;vertical-align:top}
+  .stats{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}
+  .stat{background:#161b22;padding:10px 14px;border-radius:8px}
+  .stat b{display:block;font-size:20px}
+  code{word-break:break-all;font-size:12px}
+</style>
+</head>
+<body>
+<h1>🚀 Moon Rush · Admin</h1>
+<input id="key" type="password" placeholder="ADMIN_KEY"> <button onclick="load()">Entrar</button>
+<select id="status" onchange="load()"><option>pending</option><option>paid</option><option>rejected</option></select>
+<div class="stats" id="stats"></div>
+<table><thead><tr><th>#</th><th>Usuario</th><th>Monto</th><th>Wallet</th><th>Señales</th><th>Acción</th></tr></thead><tbody id="rows"></tbody></table>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+$('key').value = sessionStorage.getItem('k') || '';
+const h = () => ({ 'x-admin-key': $('key').value, 'content-type': 'application/json' });
+async function load() {
+  sessionStorage.setItem('k', $('key').value);
+  const s = await fetch('/api/admin/stats', { headers: h() }).then(r => r.json());
+  if (s.error) return alert(s.error);
+  $('stats').innerHTML = [
+    ['Usuarios', s.users], ['Partidas 24h', s.runs24h], ['Anuncios 24h', s.ads24h],
+    ['Partidas rechazadas 24h', s.rejectedRuns24h], ['Monedas en circulación', s.coinsOutstanding],
+    ['Retiros pendientes', '$' + (s.pendingUsdCents / 100).toFixed(2)], ['Total pagado', '$' + (s.paidUsdCents / 100).toFixed(2)],
+  ].map(([k, v]) => `<div class="stat">${k}<b>${v}</b></div>`).join('');
+  const list = await fetch('/api/admin/withdrawals?status=' + $('status').value, { headers: h() }).then(r => r.json());
+  $('rows').innerHTML = list.map(w => `<tr>
+    <td>${w.id}<br><small>${new Date(w.created_at).toLocaleString()}</small></td>
+    <td>${esc(w.first_name)} @${esc(w.username || '-')}<br><small>id ${esc(w.user_id)}</small></td>
+    <td>$${(w.usd_cents / 100).toFixed(2)} ${w.currency}<br><small>${w.coins} monedas</small></td>
+    <td><code>${esc(w.wallet)}</code></td>
+    <td>Ganado total: ${w.total_earned}<br>Partidas rechazadas: ${w.rejected_runs}</td>
+    <td>${w.status === 'pending' ? `<input id="tx${w.id}" placeholder="hash tx" size="10"><br>
+      <button onclick="act(${w.id},'paid')">Marcar pagado</button>
+      <button class="red" onclick="act(${w.id},'reject')">Rechazar</button>` : esc(w.tx_hash || w.note || '')}</td>
+  </tr>`).join('') || '<tr><td colspan="6">Nada por aquí</td></tr>';
+}
+async function act(id, action) {
+  const txHash = $('tx' + id)?.value;
+  const note = action === 'reject' ? prompt('Motivo del rechazo') : '';
+  await fetch('/api/admin/withdrawals/' + id, { method: 'POST', headers: h(), body: JSON.stringify({ action, txHash, note }) });
+  load();
+}
+if ($('key').value) load();
+</script>
+</body>
+</html>

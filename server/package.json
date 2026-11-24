@@ -1,0 +1,12 @@
+{
+  "name": "moon-rush-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "DEV_MODE=1 node --watch src/index.js"
+  },
+  "engines": { "node": ">=22.13" },
+  "dependencies": { "express": "4.21.2" }
+}

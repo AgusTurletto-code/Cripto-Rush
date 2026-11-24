@@ -1,5 +1,6 @@
 import { initData } from './telegram.js';
 import { demoApi } from './demoApi.js';
+import { t } from '../i18n.js';
 
 export const DEMO = import.meta.env.VITE_DEMO === '1';
 
@@ -19,9 +20,37 @@ async function call(method, path, body) {
   return data;
 }
 
+// ---------- Identificación del dispositivo (para detectar varias cuentas de la misma persona) ----------
+function deviceId() {
+  try {
+    let id = localStorage.getItem('cr-device');
+    if (!id) { id = crypto.randomUUID?.() || String(Math.random()).slice(2) + Date.now(); localStorage.setItem('cr-device', id); }
+    return id;
+  } catch { return 'nostorage'; }
+}
+
+/** Huella del dispositivo (modelo de pantalla, idioma, zona horaria, GPU…): señal débil, varios teléfonos iguales coinciden. */
+async function fingerprint() {
+  let gpu = '';
+  try {
+    const gl = document.createElement('canvas').getContext('webgl');
+    const ext = gl?.getExtension('WEBGL_debug_renderer_info');
+    gpu = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '';
+  } catch { /* ignore */ }
+  const raw = [navigator.userAgent, screen.width + 'x' + screen.height, devicePixelRatio, navigator.language,
+    Intl.DateTimeFormat().resolvedOptions().timeZone, navigator.hardwareConcurrency, navigator.deviceMemory, gpu].join('|');
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
+    return [...new Uint8Array(buf)].slice(0, 16).map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    let h = 0; for (const c of raw) h = (h * 31 + c.charCodeAt(0)) | 0;
+    return 'h' + (h >>> 0).toString(16);
+  }
+}
+
 const realApi = {
   async login() {
-    const r = await call('POST', '/auth', { initData: initData() });
+    const r = await call('POST', '/auth', { initData: initData(), device: { id: deviceId(), fp: await fingerprint() } });
     token = r.token;
     return r.user;
   },
@@ -35,23 +64,10 @@ const realApi = {
   setWallet: (address) => call('POST', '/wallet', { address }),
   withdraw: (coins, currency) => call('POST', '/withdraw', { coins, currency }),
   withdrawals: () => call('GET', '/withdrawals'),
+  claimDaily: () => call('POST', '/daily/claim'),
+  referrals: () => call('GET', '/referrals'),
 };
 
 export const api = DEMO ? demoApi : realApi;
 
-export const ERRORS = {
-  network_error: 'Sin conexión con el servidor',
-  invalid_init_data: 'Abre el juego desde Telegram',
-  run_rejected: 'La partida no pasó la verificación',
-  ad_limit: 'Llegaste al límite de anuncios de hoy',
-  ad_not_verified: 'No pudimos verificar el anuncio',
-  already_revived: 'Solo puedes revivir una vez por partida',
-  already_doubled: 'Ya duplicaste esta partida',
-  not_enough_coins: 'No tienes suficientes monedas',
-  below_minimum: 'Monto por debajo del mínimo',
-  no_wallet: 'Conecta tu wallet primero',
-  withdraw_limit: 'Ya hiciste un retiro hoy',
-  bad_address: 'Dirección de wallet inválida',
-  banned: 'Tu cuenta fue suspendida',
-};
-export const errMsg = (e) => ERRORS[e?.message] || 'Algo salió mal (' + (e?.message || '?') + ')';
+export const errMsg = (e) => t('err')[e?.message] || t('error_generic', { code: e?.message || '?' });

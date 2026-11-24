@@ -84,9 +84,12 @@ export class Game {
   }
 
   // ---------- API pública ----------
-  start(seed) {
+  /** opts.tutorial: primera partida con cámara lenta y carteles de ayuda. */
+  start(seed, opts = {}) {
     this.world.reset(seed);
     this._resetPlayer();
+    this.timeScale = 1;
+    this.tut = opts.tutorial ? { shown: new Set(), wait: null, startHint: false } : null;
     this.dayPhase = 0.02; // cada partida arranca de día
     this.state = 'running';
     this.clock.getDelta();
@@ -182,7 +185,13 @@ export class Game {
   _frame() {
     const dt = Math.min(this.clock.getDelta(), 1 / 20);
     this.time += dt;
-    if (this.state === 'running') this._step(dt);
+    if (this.state === 'running') {
+      // cámara lenta del tutorial: se acerca suave a la velocidad objetivo
+      const target = this.tut?.wait ? 0.25 : 1;
+      this.timeScale += (target - this.timeScale) * Math.min(1, dt * 8);
+      this._step(dt * this.timeScale);
+      if (this.tut) this._tutorial();
+    }
 
     // ciclo de día y noche (en el menú corre más lento)
     if (this.state === 'running') this.dayPhase += dt / DAY_CYCLE_SECONDS;
@@ -277,11 +286,40 @@ export class Game {
 
     this.world.update(this.d, this.time, dt);
     this._collide();
+    this.cb.onSpeed?.(this.speed);
     this.cb.onHud?.({
       coins: this.coins,
       distance: Math.floor(this.d),
       powerups: Object.entries(this.power).filter(([, v]) => v > 0).map(([k, v]) => ({ k, left: v, ...POWERUPS[k] })),
     });
+  }
+
+  /** Tutorial: frena antes del primer obstáculo de cada tipo hasta que el jugador haga el movimiento. */
+  _tutorial() {
+    const tut = this.tut;
+    if (!tut.startHint && this.runTime > 0.4) { tut.startHint = true; this.cb.onTutorial?.('move'); }
+    if (tut.wait) {
+      const o = tut.wait.o;
+      const done = (o.type === 'low' && this.y > 0.3)
+        || (o.type === 'high' && this.slideLeft > 0)
+        || (o.type === 'wall' && Math.abs(LANES[this.lane] - LANES[o.lane]) > 1);
+      const passed = this.d > o.d + OBSTACLE_TYPES[o.type].len + 1;
+      if (done || passed) {
+        tut.wait = null;
+        this.cb.onTutorial?.(done ? 'nice' : 'clear');
+        if (tut.shown.size >= 3) { this.cb.onTutorial?.('done'); this.tut = null; }
+      }
+      return;
+    }
+    // próximo obstáculo en el carril del jugador
+    const ahead = this.world.obstacles
+      .filter((o) => !tut.shown.has(o.type) && Math.abs(LANES[o.lane] - this.x) < 1.2 && o.d - this.d > 0 && o.d - this.d < 13)
+      .sort((a, b) => a.d - b.d)[0];
+    if (ahead) {
+      tut.shown.add(ahead.type);
+      tut.wait = { o: ahead };
+      this.cb.onTutorial?.({ low: 'jump', high: 'slide', wall: 'wall' }[ahead.type]);
+    }
   }
 
   _collide() {

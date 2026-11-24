@@ -14,6 +14,10 @@
   .stat{background:#161b22;padding:10px 14px;border-radius:8px}
   .stat b{display:block;font-size:20px}
   code{word-break:break-all;font-size:12px}
+  .bad{color:#ff7b72} .warn{color:#d29922}
+  button.small{font-size:12px;padding:3px 8px;margin-top:4px;background:#30363d;border-color:#30363d}
+  button.small.red{background:#da3633;border-color:#da3633}
+  .det{font-size:12px;margin-top:4px;color:#c9d1d9}
 </style>
 </head>
 <body>
@@ -41,6 +45,8 @@ async function load() {
     ['Retiros pendientes', '$' + (s.pendingUsdCents / 100).toFixed(2)], ['Total pagado', '$' + (s.paidUsdCents / 100).toFixed(2)],
     ['Ingresos anuncios 24h', '$' + Number(s.adRevenue24h).toFixed(3)], ['Ingresos anuncios total', '$' + Number(s.adRevenueTotal).toFixed(2)],
     ['Verificación de anuncios', s.adVerifyMode === 'postback' ? '✅ postback' : '⚠️ solo cliente'],
+    ['Referidos', s.referralsConfigured ? `${s.referredUsers} invitados · ${s.blockedReferrals} bloqueados` : '⚠️ falta BOT_USERNAME'],
+    ['Diarios reclamados hoy', s.dailyClaims24h],
   ].map(([k, v]) => `<div class="stat">${k}<b>${v}</b></div>`).join('');
   const adlog = await fetch('/api/admin/ads-debug', { headers: h() }).then(r => r.json());
   $('adlog').innerHTML = adlog.map(e => `<tr><td>${new Date(e.at).toLocaleTimeString()}</td>
@@ -55,11 +61,36 @@ async function load() {
     <td>${esc(w.first_name)} @${esc(w.username || '-')}<br><small>id ${esc(w.user_id)}</small></td>
     <td>$${(w.usd_cents / 100).toFixed(2)} ${w.currency}<br><small>${w.coins} monedas</small></td>
     <td><code>${esc(w.wallet)}</code></td>
-    <td>Ganado total: ${w.total_earned}<br>Partidas rechazadas: ${w.rejected_runs}</td>
+    <td>${signals(w)}<br><button class="small" onclick="details('${esc(w.user_id)}', this)">Ver cuentas vinculadas</button><div class="det"></div></td>
     <td>${w.status === 'pending' ? `<input id="tx${w.id}" placeholder="hash tx" size="10"><br>
       <button onclick="act(${w.id},'paid')">Marcar pagado</button>
       <button class="red" onclick="act(${w.id},'reject')">Rechazar</button>` : esc(w.tx_hash || w.note || '')}</td>
   </tr>`).join('') || '<tr><td colspan="6">Nada por aquí</td></tr>';
+}
+function signals(w) {
+  const l = w.linked || {};
+  const out = [];
+  if (l.device) out.push(`<span class="bad">⚠️ ${l.device} cuenta(s) en el mismo teléfono</span>`);
+  if (l.wallet) out.push(`<span class="bad">⚠️ ${l.wallet} cuenta(s) con la misma wallet</span>`);
+  if (l.ip) out.push(`<span class="warn">ℹ️ ${l.ip} cuenta(s) con la misma IP (puede ser familia o wifi compartido)</span>`);
+  if (w.ref_status === 'blocked') out.push('<span class="bad">⚠️ auto-referido bloqueado</span>');
+  if (w.rejected_runs) out.push(`<span class="bad">⚠️ ${w.rejected_runs} partida(s) rechazadas por trampa</span>`);
+  if (w.played_coins < w.coins * 0.3) out.push(`<span class="warn">ℹ️ ganó jugando solo ${w.played_coins} de ${w.total_earned} monedas</span>`);
+  const age = Math.floor((Date.now() - w.user_created) / 864e5);
+  out.push(`Cuenta de ${age} día(s) · ganado jugando ${w.played_coins} · total ${w.total_earned}`);
+  return out.join('<br>');
+}
+async function details(id, btn) {
+  const u = await fetch('/api/admin/users/' + encodeURIComponent(id), { headers: h() }).then(r => r.json());
+  const list = (arr) => arr.length ? arr.map(x => `${esc(x.name || x.id)} (id ${esc(x.id)}) · saldo ${x.balance} · retiros ${x.withdrawals}${x.banned ? ' · 🚫' : ''}`).join('<br>') : 'ninguna';
+  btn.nextElementSibling.innerHTML = `<b>Mismo teléfono:</b><br>${list(u.linked.device)}<br><b>Misma wallet:</b><br>${list(u.linked.wallet)}<br><b>Misma IP:</b><br>${list(u.linked.ip)}<br>
+    Invitado por: ${esc(u.referredBy || '-')} (${esc(u.refStatus || '-')}) · Invitó a: ${u.referrals}<br>
+    <button class="small red" onclick="ban('${esc(u.id)}', ${!u.banned})">${u.banned ? 'Quitar suspensión' : 'Suspender esta cuenta'}</button>`;
+}
+async function ban(id, banned) {
+  if (!confirm(banned ? '¿Suspender la cuenta ' + id + '?' : '¿Quitar la suspensión de ' + id + '?')) return;
+  await fetch('/api/admin/users/' + encodeURIComponent(id) + '/ban', { method: 'POST', headers: h(), body: JSON.stringify({ banned }) });
+  load();
 }
 async function act(id, action) {
   const txHash = $('tx' + id)?.value;

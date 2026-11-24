@@ -33,6 +33,18 @@ export const config = {
     dailyCoinCap: num('DAILY_COIN_CAP', 0), // tope de monedas ganadas por día (0 = sin límite)
     maxAdsPerDay: num('MAX_ADS_PER_DAY', 40),
     currencies: ['USDT_TON', 'TON'],
+    // Recompensa diaria: día 1..7 (después del 7 vuelve a empezar). Cortar la racha la reinicia.
+    dailyRewards: (process.env.DAILY_REWARDS || '100,150,200,300,400,600,1000').split(',').map(Number),
+  },
+
+  // Referidos: link https://t.me/<BOT_USERNAME>/<MINI_APP_NAME>?startapp=ref_<id>
+  referrals: {
+    botUsername: (process.env.BOT_USERNAME || '').replace(/^@/, ''),
+    miniAppName: process.env.MINI_APP_NAME || 'play',
+    commission: num('REF_COMMISSION', 0.1),        // % de lo que gana el amigo en partidas, para siempre
+    qualifyCoins: num('REF_QUALIFY_COINS', 1000),  // el amigo "cuenta" cuando gana esto jugando
+    referrerBonus: num('REF_BONUS', 2000),         // premio para quien invitó, al calificar
+    welcomeBonus: num('REF_WELCOME', 500),         // premio de bienvenida para el amigo, al calificar
   },
 
   // 'client': se confía en que el SDK de Monetag resolvió la promesa (más simple).

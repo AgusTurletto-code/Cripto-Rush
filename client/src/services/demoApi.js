@@ -7,7 +7,18 @@ const CFG = {
   coinsPerUsd: 20000, minWithdrawCoins: 40000, dailyCoinCap: 0, devMode: true,
   currencies: ['USDT_TON', 'TON'],
   characters: CHARACTERS,
+  dailyRewards: [100, 150, 200, 300, 400, 600, 1000],
+  referrals: { commission: 0.1, qualifyCoins: 1000, referrerBonus: 2000, welcomeBonus: 500 },
 };
+const dayStr = (t = Date.now()) => new Date(t).toISOString().slice(0, 10);
+function withDaily(u) {
+  const today = dayStr(), yesterday = dayStr(Date.now() - 864e5);
+  const claimedToday = u.dailyLast === today;
+  const streak = claimedToday || u.dailyLast === yesterday ? (u.dailyStreak || 0) : 0;
+  const n = CFG.dailyRewards.length;
+  u.daily = { claimedToday, streak, day: claimedToday ? ((streak - 1) % n) + 1 : (streak % n) + 1, rewards: CFG.dailyRewards };
+  return u;
+}
 
 function load() {
   let s = null;
@@ -25,9 +36,22 @@ const wait = (v) => new Promise((r) => setTimeout(() => r(structuredClone(v)), 1
 let run = null;
 
 export const demoApi = {
-  login: () => wait(state.user),
+  login: () => wait(withDaily(state.user)),
   config: () => wait(CFG),
-  me: () => wait(state.user),
+  me: () => wait(withDaily(state.user)),
+  claimDaily() {
+    const u = withDaily(state.user);
+    if (u.daily.claimedToday) fail('already_claimed');
+    const streak = u.daily.streak + 1;
+    const reward = CFG.dailyRewards[(streak - 1) % CFG.dailyRewards.length];
+    u.balance += reward; u.dailyStreak = streak; u.dailyLast = dayStr();
+    save();
+    return wait({ reward, streak, user: withDaily(u) });
+  },
+  referrals: () => wait({
+    link: 'https://t.me/TuBot/play?startapp=ref_demo', total: 2, qualified: 1, earnings: 2140,
+    friends: [{ name: 'Lucía', status: 'qualified', since: Date.now() - 3 * 864e5 }, { name: 'Tomás', status: 'pending', since: Date.now() - 864e5 }],
+  }),
   startRun() {
     run = { runId: 'demo-' + Date.now(), seed: (Math.random() * 2 ** 31) | 0, doubled: false, revived: false,
       multiplier: CHARACTERS[state.user.character]?.multiplier ?? 1 };
@@ -44,7 +68,7 @@ export const demoApi = {
     u.balance += credited; u.totalEarned += credited; u.earnedToday += credited;
     u.bestDistance = Math.max(u.bestDistance, distance);
     save();
-    return wait({ credited, capped: false, doubled: run.doubled, multiplier: run.multiplier, user: u });
+    return wait({ credited, capped: false, doubled: run.doubled, multiplier: run.multiplier, user: withDaily(u) });
   },
   buyCharacter(id) {
     const u = state.user;

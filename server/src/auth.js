@@ -27,7 +27,9 @@ export function validateInitData(initData, maxAgeSec = 24 * 3600) {
   if (!authDate || Date.now() / 1000 - authDate > maxAgeSec) return null;
 
   try {
-    return JSON.parse(params.get('user'));
+    const user = JSON.parse(params.get('user'));
+    // start_param llega cuando se abre con t.me/<bot>/<app>?startapp=... (lo usamos para referidos)
+    return { ...user, start_param: params.get('start_param') || '' };
   } catch {
     return null;
   }

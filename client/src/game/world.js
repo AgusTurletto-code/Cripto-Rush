@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createRng } from './rng.js';
 import { LANES, RULES, speedAtDistance } from './rules.js';
 import { toon, coinFaceTex, mesh as outlined } from './characters.js';
+import { t } from '../i18n.js';
 
 // ---------------------------------------------------------------------------
 // Texturas generadas con canvas (sin assets externos)
@@ -115,7 +116,7 @@ const secTex = canvasTexture(512, 192, (g, w, h) => {
   for (let x = -h; x < w + h; x += 56) { g.beginPath(); g.moveTo(x, h); g.lineTo(x + 18, h); g.lineTo(x + 18 + h * 0.25, h - 26); g.lineTo(x + h * 0.25, h - 26); g.fill(); }
   g.fillStyle = '#fff'; g.font = '900 96px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText('⚠ SEC', w / 2, 72);
-  g.font = 'bold 34px sans-serif'; g.fillStyle = '#ffd60a'; g.fillText('INVESTIGACIÓN EN CURSO', w / 2, 136);
+  g.font = 'bold 34px sans-serif'; g.fillStyle = '#ffd60a'; g.fillText(t('w_sec_sub'), w / 2, 136);
 });
 const jerseyTex = canvasTexture(256, 64, (g, w, h) => {
   g.fillStyle = '#c9c9c9'; g.fillRect(0, 0, w, h);
@@ -135,10 +136,7 @@ const stripesTex = canvasTexture(32, 128, (g, w, h) => {
 
 // Pantallas y carteles: se generan una vez y se reutilizan
 const TICKERS = [['BTC', '+4.2%'], ['ETH', '+2.9%'], ['DOGE', '+69%'], ['TON', '+7.7%'], ['SOL', '-1.3%'], ['PEPE', '+420%'], ['RUSH', '+1000%'], ['FIAT', '-12%']];
-const HEADLINES = [
-  'MUSKRAT TUITEA UN PERRO: MERCADO +30%', 'THUMP: "ARANCELES A LA LUNA"', 'SATOSHI SIGUE SIN APARECER',
-  'BALLENA COMPRA 10.000 BTC', 'BANCO CENTRAL IMPRIME MÁS BILLETES', 'WEN LAMBO?', 'NUEVA MEMECOIN SUBE 9000%', 'HODL O NADA',
-];
+const HEADLINES = t('w_headlines');
 const screenTextures = TICKERS.map(([sym, ch]) => canvasTexture(256, 160, (g, w, h) => {
   const up = ch.startsWith('+');
   g.fillStyle = '#060a14'; g.fillRect(0, 0, w, h);
@@ -154,7 +152,7 @@ const screenTextures = TICKERS.map(([sym, ch]) => canvasTexture(256, 160, (g, w,
 const headlineTextures = HEADLINES.map((text) => canvasTexture(512, 192, (g, w, h) => {
   g.fillStyle = '#0b0f1a'; g.fillRect(0, 0, w, h);
   g.fillStyle = '#d62828'; g.fillRect(0, 0, w, 48);
-  g.fillStyle = '#fff'; g.font = '900 28px sans-serif'; g.fillText('● ÚLTIMO MOMENTO', 20, 34);
+  g.fillStyle = '#fff'; g.font = '900 28px sans-serif'; g.fillText(t('w_breaking'), 20, 34);
   g.font = 'bold 36px sans-serif';
   const words = text.split(' '); let line = ''; let y = 96;
   for (const wd of words) {

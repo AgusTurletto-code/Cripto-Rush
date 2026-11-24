@@ -38,6 +38,52 @@ function logAd(entry) {
   console.log('[ads]', JSON.stringify(entry));
 }
 
+// ---------- Utilidades ----------
+const dayStr = (t = now()) => new Date(t).toISOString().slice(0, 10); // fecha UTC AAAA-MM-DD
+
+/** Wallet TON normalizada (workchain:hash): EQ…/UQ…/raw de la misma wallet dan lo mismo. */
+function walletKey(address) {
+  const raw = address.match(/^(-?\d+):([0-9a-fA-F]{64})$/);
+  if (raw) return `${Number(raw[1])}:${raw[2].toLowerCase()}`;
+  try {
+    const b = Buffer.from(address.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+    if (b.length !== 36) return address;
+    return `${b.readInt8(1)}:${b.subarray(2, 34).toString('hex')}`;
+  } catch { return address; }
+}
+
+const clip = (v, n = 80) => String(v ?? '').slice(0, n);
+function recordDevice(userId, device, ip) {
+  const deviceId = clip(device?.id, 64) || 'none';
+  const fp = clip(device?.fp, 64) || 'none';
+  db.prepare(`INSERT INTO user_devices (user_id, device_id, fp, ip, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?)
+              ON CONFLICT(user_id, device_id, ip) DO UPDATE SET last_seen = excluded.last_seen, fp = excluded.fp`)
+    .run(userId, deviceId, fp, clip(ip, 64) || 'none', now(), now());
+}
+
+/**
+ * Otras cuentas que comparten algo con esta:
+ *  - device: mismo navegador/teléfono (señal fuerte)
+ *  - wallet: misma wallet TON (señal fuerte)
+ *  - ip: misma IP en los últimos 30 días (señal débil: familias, wifi público, datos móviles comparten IP)
+ */
+function linkedAccounts(userId) {
+  const q = (sql, ...a) => db.prepare(sql).all(...a).map((r) => r.user_id);
+  const device = q(`SELECT DISTINCT b.user_id FROM user_devices a JOIN user_devices b ON a.device_id = b.device_id
+                    WHERE a.user_id = ? AND b.user_id != a.user_id AND a.device_id != 'none'`, userId);
+  const ip = q(`SELECT DISTINCT b.user_id FROM user_devices a JOIN user_devices b ON a.ip = b.ip
+                WHERE a.user_id = ? AND b.user_id != a.user_id AND a.ip != 'none' AND b.last_seen >= ?`, userId, now() - 30 * DAY);
+  const u = db.prepare('SELECT wallet_key FROM users WHERE id = ?').get(userId);
+  const wallet = u?.wallet_key ? q('SELECT id AS user_id FROM users WHERE wallet_key = ? AND id != ?', u.wallet_key, userId) : [];
+  return { device, ip, wallet };
+}
+
+/** ¿Estas dos cuentas parecen ser la misma persona? (para no pagar auto-referidos) */
+function sameOwner(a, b) {
+  const l = linkedAccounts(a);
+  return l.device.includes(b) || l.wallet.includes(b);
+}
+
 // ---------- Usuarios ----------
 const getUser = db.prepare('SELECT * FROM users WHERE id = ?');
 
@@ -55,7 +101,19 @@ function publicUser(u) {
     character: u.character,
     owned: JSON.parse(u.owned),
     earnedToday,
+    daily: dailyState(u),
   };
+}
+
+function dailyState(u) {
+  const today = dayStr(), yesterday = dayStr(now() - DAY);
+  const claimedToday = u.daily_last === today;
+  const alive = claimedToday || u.daily_last === yesterday; // la racha sigue viva
+  const streak = alive ? u.daily_streak : 0;
+  const n = config.economy.dailyRewards.length;
+  // día que toca reclamar (1..7); si ya reclamó hoy, el que reclamó
+  const day = claimedToday ? ((streak - 1) % n) + 1 : (streak % n) + 1;
+  return { claimedToday, streak, day, rewards: config.economy.dailyRewards };
 }
 
 function auth(req, _res, next) {
@@ -77,6 +135,13 @@ app.get('/api/config', wrap(() => ({
   currencies: config.economy.currencies,
   characters: CHARACTERS,
   devMode: config.devMode,
+  dailyRewards: config.economy.dailyRewards,
+  referrals: {
+    commission: config.referrals.commission,
+    qualifyCoins: config.referrals.qualifyCoins,
+    referrerBonus: config.referrals.referrerBonus,
+    welcomeBonus: config.referrals.welcomeBonus,
+  },
 })));
 
 app.post('/api/auth', wrap((req) => {
@@ -87,10 +152,22 @@ app.post('/api/auth', wrap((req) => {
   if (!tgUser) throw new ApiError(401, 'invalid_init_data');
 
   const id = String(tgUser.id);
+  const isNew = !getUser.get(id);
   db.prepare(`
     INSERT INTO users (id, username, first_name, created_at) VALUES (?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET username = excluded.username, first_name = excluded.first_name
   `).run(id, tgUser.username || null, tgUser.first_name || null, now());
+  recordDevice(id, req.body?.device, req.ip);
+
+  // Referido: solo al crear la cuenta, con start_param = ref_<id del que invitó>
+  const startParam = tgUser.start_param || (config.devMode ? String(req.body?.devStartParam || '') : '');
+  const refMatch = startParam.match(/^ref_(\w{1,32})$/);
+  if (isNew && refMatch && refMatch[1] !== id && getUser.get(refMatch[1])) {
+    // si comparte dispositivo o wallet con quien lo invitó, es un auto-referido: queda bloqueado
+    const status = sameOwner(id, refMatch[1]) ? 'blocked' : 'pending';
+    db.prepare('UPDATE users SET referred_by = ?, ref_status = ? WHERE id = ?').run(refMatch[1], status, id);
+    console.log(`[ref] ${id} invitado por ${refMatch[1]} (${status})`);
+  }
 
   return { token: signSession(id), user: publicUser(getUser.get(id)) };
 }));
@@ -235,6 +312,7 @@ api.post('/run/end', wrap((req) => {
     db.prepare(`UPDATE users SET balance = balance + ?, total_earned = total_earned + ?,
                 best_distance = MAX(best_distance, ?) WHERE id = ?`)
       .run(credited, credited, Math.floor(distance), req.user.id);
+    payReferral(req.user.id, credited);
 
     return {
       credited,
@@ -244,6 +322,60 @@ api.post('/run/end', wrap((req) => {
       user: publicUser(getUser.get(req.user.id)),
     };
   });
+}));
+
+/** Comisión para quien invitó + premios cuando el amigo califica. Todo dentro de la transacción de la partida. */
+function payReferral(userId, credited) {
+  const u = getUser.get(userId);
+  if (!u.referred_by || u.ref_status === 'blocked' || credited <= 0) return;
+  const r = config.referrals;
+  const addTo = (id, coins, refEarn = 0) => db.prepare(
+    'UPDATE users SET balance = balance + ?, total_earned = total_earned + ?, ref_earnings = ref_earnings + ? WHERE id = ?'
+  ).run(coins, coins, refEarn, id);
+
+  if (u.ref_status === 'pending') {
+    // monedas ganadas jugando (sin contar premios): el amigo tiene que jugar de verdad
+    const played = db.prepare(`SELECT COALESCE(SUM(credited),0) s FROM runs WHERE user_id = ? AND status = 'finished'`).get(userId).s;
+    if (played < r.qualifyCoins) return; // todavía no califica: aún no hay comisión
+    if (sameOwner(userId, u.referred_by)) { // se volvió a revisar al calificar
+      db.prepare(`UPDATE users SET ref_status = 'blocked' WHERE id = ?`).run(userId);
+      return;
+    }
+    db.prepare(`UPDATE users SET ref_status = 'qualified' WHERE id = ?`).run(userId);
+    addTo(u.referred_by, r.referrerBonus, r.referrerBonus);
+    addTo(userId, r.welcomeBonus);
+    console.log(`[ref] ${userId} calificó: +${r.referrerBonus} a ${u.referred_by}, +${r.welcomeBonus} a ${userId}`);
+  }
+  const commission = Math.floor(credited * r.commission);
+  if (commission > 0) addTo(u.referred_by, commission, commission);
+}
+
+// Recompensa diaria
+api.post('/daily/claim', wrap((req) => tx(() => {
+  const u = getUser.get(req.user.id);
+  const today = dayStr();
+  if (u.daily_last === today) throw new ApiError(409, 'already_claimed');
+  const streak = u.daily_last === dayStr(now() - DAY) ? u.daily_streak + 1 : 1;
+  const rewards = config.economy.dailyRewards;
+  const reward = rewards[(streak - 1) % rewards.length];
+  db.prepare(`UPDATE users SET balance = balance + ?, total_earned = total_earned + ?, daily_streak = ?, daily_last = ? WHERE id = ?`)
+    .run(reward, reward, streak, today, u.id);
+  return { reward, streak, user: publicUser(getUser.get(u.id)) };
+})));
+
+// Referidos: link para compartir y lista de invitados
+api.get('/referrals', wrap((req) => {
+  const r = config.referrals;
+  const rows = db.prepare(`SELECT id, first_name, username, ref_status, created_at FROM users
+                           WHERE referred_by = ? ORDER BY created_at DESC LIMIT 50`).all(req.user.id);
+  const counts = db.prepare(`SELECT COUNT(*) total, SUM(ref_status = 'qualified') qualified FROM users WHERE referred_by = ?`).get(req.user.id);
+  return {
+    link: r.botUsername ? `https://t.me/${r.botUsername}/${r.miniAppName}?startapp=ref_${req.user.id}` : null,
+    total: counts.total || 0,
+    qualified: counts.qualified || 0,
+    earnings: getUser.get(req.user.id).ref_earnings,
+    friends: rows.map((f) => ({ name: f.first_name || f.username || 'Jugador', status: f.ref_status, since: f.created_at })),
+  };
 }));
 
 api.post('/character/buy', wrap((req) => {
@@ -268,7 +400,13 @@ api.post('/wallet', wrap((req) => {
   const address = String(req.body?.address || '').trim();
   // Direcciones TON: formato raw (0:hex) o "user-friendly" base64url de 48 caracteres
   if (!/^(-?\d:[0-9a-fA-F]{64}|[A-Za-z0-9_\-+/]{48})$/.test(address)) throw new ApiError(400, 'bad_address');
-  db.prepare('UPDATE users SET wallet = ? WHERE id = ?').run(address, req.user.id);
+  const key = walletKey(address);
+  const other = db.prepare('SELECT id FROM users WHERE wallet_key = ? AND id != ?').get(key, req.user.id);
+  if (other) {
+    console.warn(`[multicuenta] ${req.user.id} intentó usar la wallet de ${other.id}`);
+    throw new ApiError(409, 'wallet_in_use');
+  }
+  db.prepare('UPDATE users SET wallet = ?, wallet_key = ? WHERE id = ?').run(address, key, req.user.id);
   return publicUser(getUser.get(req.user.id));
 }));
 
@@ -307,11 +445,32 @@ admin.use((req, _res, next) => {
   next();
 });
 admin.get('/withdrawals', wrap((req) =>
-  db.prepare(`SELECT w.*, u.username, u.first_name, u.total_earned,
-              (SELECT COUNT(*) FROM runs r WHERE r.user_id = w.user_id AND r.status='rejected') AS rejected_runs
+  db.prepare(`SELECT w.*, u.username, u.first_name, u.total_earned, u.referred_by, u.ref_status, u.created_at AS user_created,
+              (SELECT COUNT(*) FROM runs r WHERE r.user_id = w.user_id AND r.status='rejected') AS rejected_runs,
+              (SELECT COALESCE(SUM(credited),0) FROM runs r WHERE r.user_id = w.user_id AND r.status='finished') AS played_coins
               FROM withdrawals w JOIN users u ON u.id = w.user_id
               WHERE w.status = ? ORDER BY w.id`).all(req.query.status || 'pending')
+    .map((w) => {
+      const l = linkedAccounts(w.user_id);
+      return { ...w, linked: { device: l.device.length, ip: l.ip.length, wallet: l.wallet.length } };
+    })
 ));
+admin.get('/users/:id', wrap((req) => {
+  const u = getUser.get(req.params.id);
+  if (!u) throw new ApiError(404, 'not_found');
+  const l = linkedAccounts(u.id);
+  const brief = (ids) => ids.map((id) => {
+    const x = getUser.get(id);
+    return x && { id, name: x.first_name || x.username, balance: x.balance, banned: !!x.banned,
+      withdrawals: db.prepare(`SELECT COUNT(*) c FROM withdrawals WHERE user_id = ? AND status != 'rejected'`).get(id).c };
+  }).filter(Boolean);
+  return {
+    id: u.id, name: u.first_name || u.username, username: u.username, balance: u.balance, banned: !!u.banned,
+    referredBy: u.referred_by, refStatus: u.ref_status, referrals: db.prepare('SELECT COUNT(*) c FROM users WHERE referred_by = ?').get(u.id).c,
+    linked: { device: brief(l.device), wallet: brief(l.wallet), ip: brief(l.ip) },
+    devices: db.prepare('SELECT device_id, ip, first_seen, last_seen FROM user_devices WHERE user_id = ? ORDER BY last_seen DESC LIMIT 10').all(u.id),
+  };
+}));
 admin.post('/withdrawals/:id', wrap((req) => {
   const { action, txHash, note } = req.body || {};
   return tx(() => {
@@ -341,6 +500,10 @@ admin.get('/stats', wrap(() => ({
   adRevenue24h: db.prepare('SELECT COALESCE(SUM(revenue),0) s FROM ad_postbacks WHERE created_at >= ?').get(now() - DAY).s,
   adRevenueTotal: db.prepare('SELECT COALESCE(SUM(revenue),0) s FROM ad_postbacks').get().s,
   adVerifyMode: config.adVerifyMode,
+  referralsConfigured: !!config.referrals.botUsername,
+  dailyClaims24h: db.prepare('SELECT COUNT(*) c FROM users WHERE daily_last = ?').get(dayStr()).c,
+  referredUsers: db.prepare('SELECT COUNT(*) c FROM users WHERE referred_by IS NOT NULL').get().c,
+  blockedReferrals: db.prepare(`SELECT COUNT(*) c FROM users WHERE ref_status = 'blocked'`).get().c,
 })));
 admin.post('/users/:id/ban', wrap((req) => {
   db.prepare('UPDATE users SET banned = ? WHERE id = ?').run(req.body?.banned === false ? 0 : 1, req.params.id);

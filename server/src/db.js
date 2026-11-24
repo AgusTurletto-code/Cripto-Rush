@@ -70,7 +70,33 @@ CREATE TABLE IF NOT EXISTS withdrawals (
 );
 `);
 
+// Dispositivos e IPs vistos por cuenta (para detectar cuentas múltiples)
+db.exec(`
+CREATE TABLE IF NOT EXISTS user_devices (
+  user_id    TEXT NOT NULL,
+  device_id  TEXT NOT NULL,   -- id aleatorio guardado en el navegador del jugador
+  fp         TEXT NOT NULL,   -- huella del dispositivo (modelo, pantalla, idioma...): señal débil
+  ip         TEXT NOT NULL,
+  first_seen INTEGER NOT NULL,
+  last_seen  INTEGER NOT NULL,
+  PRIMARY KEY (user_id, device_id, ip)
+);
+CREATE INDEX IF NOT EXISTS idx_dev_device ON user_devices(device_id);
+CREATE INDEX IF NOT EXISTS idx_dev_fp ON user_devices(fp);
+CREATE INDEX IF NOT EXISTS idx_dev_ip ON user_devices(ip);
+`);
+
 // Migraciones simples: columnas agregadas después de la primera versión
+const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+const addUserCol = (name, def) => { if (!userCols.includes(name)) db.exec(`ALTER TABLE users ADD COLUMN ${name} ${def}`); };
+addUserCol('daily_streak', 'INTEGER NOT NULL DEFAULT 0');
+addUserCol('daily_last', 'TEXT');
+addUserCol('referred_by', 'TEXT');
+addUserCol('ref_status', 'TEXT');          // pending | qualified | blocked
+addUserCol('ref_earnings', 'INTEGER NOT NULL DEFAULT 0');
+addUserCol('wallet_key', 'TEXT');          // wallet normalizada (para detectar la misma wallet en 2 cuentas)
+db.exec('CREATE INDEX IF NOT EXISTS idx_users_ref ON users(referred_by)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_users_wallet ON users(wallet_key)');
 const pbCols = db.prepare('PRAGMA table_info(ad_postbacks)').all().map((c) => c.name);
 if (!pbCols.includes('telegram_id')) db.exec(`ALTER TABLE ad_postbacks ADD COLUMN telegram_id TEXT NOT NULL DEFAULT ''`);
 if (!pbCols.includes('revenue')) db.exec('ALTER TABLE ad_postbacks ADD COLUMN revenue REAL NOT NULL DEFAULT 0');

@@ -85,6 +85,8 @@ El repo incluye un `Dockerfile`: Railway lo detecta solo.
    | `DB_PATH` | `/data/cryptorush.db` |
    | `VITE_MONETAG_ZONE` | número de zona de Monetag (cuando lo tengas) |
    | `VITE_TWA_RETURN_URL` | `https://t.me/TuBot/app` (cuando crees la Mini App) |
+   | `BOT_USERNAME` | usuario del bot sin @ (para los links de invitación) |
+   | `MINI_APP_NAME` | short name de la Mini App (por defecto `play`) |
 
 3. Click derecho en el servicio → **Attach Volume** → montalo en `/data` (ahí se guarda la base de datos; sin esto se pierde en cada deploy).
 4. **Settings → Networking → Generate Domain**: te da una URL `https://algo.up.railway.app`.
@@ -117,6 +119,18 @@ El repo incluye un `Dockerfile`: Railway lo detecta solo.
      y en Railway cargá `AD_POSTBACK_SECRET=TU_SECRETO` (el mismo valor, largo y al azar). Con eso el servidor
      solo da el revivir / x2 si Monetag confirma que el anuncio se vio completo y pagó (`valued`).
    - El panel `/admin` muestra los ingresos estimados que informa Monetag al lado de lo que pagás en retiros.
+
+## Recompensa diaria, referidos y cuentas múltiples
+
+- **Diario:** días 1 a 7 dan `100, 150, 200, 300, 400, 600, 1000` monedas (`DAILY_REWARDS`). Si un día no entra, la racha vuelve a 1.
+- **Referidos:** link `https://t.me/BOT_USERNAME/MINI_APP_NAME?startapp=ref_<id>`. Cuando el amigo gana `REF_QUALIFY_COINS`
+  (1000) jugando, quien invitó recibe `REF_BONUS` (2000) y el amigo `REF_WELCOME` (500). Después, quien invitó gana
+  `REF_COMMISSION` (10 %) de lo que gane el amigo en partidas, para siempre (lo pone la casa, no se le descuenta al amigo).
+- **Cuentas múltiples:** el servidor guarda un id por dispositivo, una huella del teléfono y la IP de cada cuenta.
+  - Una wallet TON solo puede estar en una cuenta (se compara la dirección real, sin importar si es `EQ…` o `UQ…`).
+  - Un referido desde el mismo teléfono o con la misma wallet que quien lo invitó queda **bloqueado** (no paga nada).
+  - El panel `/admin` muestra en cada retiro las cuentas vinculadas (mismo teléfono / wallet / IP) y permite suspenderlas.
+  - La IP es una señal débil (familias, wifi público y datos móviles comparten IP): revisala, no rechaces solo por eso.
 
 ## Economía y pagos
 

@@ -30,6 +30,7 @@ const realApi = {
   startRun: () => call('POST', '/run/start'),
   endRun: (runId, coins, distance) => call('POST', '/run/end', { runId, coins, distance }),
   claimAd: (runId, type, ymid) => call('POST', '/ads/claim', { runId, type, ymid }),
+  reportAdError: (type, code, detail) => call('POST', '/ads/error', { type, code, detail }).catch(() => {}),
   buyCharacter: (id) => call('POST', '/character/buy', { id }),
   setWallet: (address) => call('POST', '/wallet', { address }),
   withdraw: (coins, currency) => call('POST', '/withdraw', { coins, currency }),

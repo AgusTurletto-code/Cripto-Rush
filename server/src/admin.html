@@ -21,6 +21,10 @@
 <input id="key" type="password" placeholder="ADMIN_KEY"> <button onclick="load()">Entrar</button>
 <select id="status" onchange="load()"><option>pending</option><option>paid</option><option>rejected</option></select>
 <div class="stats" id="stats"></div>
+<h2>Diagnóstico de anuncios</h2>
+<p style="color:#8b949e;font-size:13px">Últimos eventos desde que arrancó el servidor: errores que vio el juego y avisos (postbacks) que mandó Monetag.</p>
+<table><thead><tr><th>Hora</th><th>Origen</th><th>Detalle</th></tr></thead><tbody id="adlog"></tbody></table>
+<h2>Retiros</h2>
 <table><thead><tr><th>#</th><th>Usuario</th><th>Monto</th><th>Wallet</th><th>Señales</th><th>Acción</th></tr></thead><tbody id="rows"></tbody></table>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -38,6 +42,13 @@ async function load() {
     ['Ingresos anuncios 24h', '$' + Number(s.adRevenue24h).toFixed(3)], ['Ingresos anuncios total', '$' + Number(s.adRevenueTotal).toFixed(2)],
     ['Verificación de anuncios', s.adVerifyMode === 'postback' ? '✅ postback' : '⚠️ solo cliente'],
   ].map(([k, v]) => `<div class="stat">${k}<b>${v}</b></div>`).join('');
+  const adlog = await fetch('/api/admin/ads-debug', { headers: h() }).then(r => r.json());
+  $('adlog').innerHTML = adlog.map(e => `<tr><td>${new Date(e.at).toLocaleTimeString()}</td>
+    <td>${e.kind === 'postback' ? '📬 Monetag' : '📱 Juego'}</td>
+    <td>${e.kind === 'postback'
+      ? `${esc(e.result)} · ${esc(e.reward || '-')} ${esc(e.event || '')} · ymid ${esc(e.ymid || '(vacío)')}`
+      : `${esc(e.type)}: <b>${esc(e.code)}</b> ${esc(e.detail)} · usuario ${esc(e.user)}`}</td></tr>`).join('')
+    || '<tr><td colspan="3">Sin eventos todavía. Probá ver un anuncio en el juego.</td></tr>';
   const list = await fetch('/api/admin/withdrawals?status=' + $('status').value, { headers: h() }).then(r => r.json());
   $('rows').innerHTML = list.map(w => `<tr>
     <td>${w.id}<br><small>${new Date(w.created_at).toLocaleString()}</small></td>

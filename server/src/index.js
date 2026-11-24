@@ -30,6 +30,14 @@ const wrap = (fn) => (req, res) => {
   }
 };
 
+// ---------- Diagnóstico de anuncios (en memoria, últimos 30 eventos) ----------
+const adLog = [];
+function logAd(entry) {
+  adLog.unshift({ at: now(), ...entry });
+  adLog.length = Math.min(adLog.length, 30);
+  console.log('[ads]', JSON.stringify(entry));
+}
+
 // ---------- Usuarios ----------
 const getUser = db.prepare('SELECT * FROM users WHERE id = ?');
 
@@ -93,12 +101,16 @@ app.post('/api/auth', wrap((req) => {
 app.get('/api/ads/postback', wrap((req) => {
   // sin secreto configurado el endpoint queda apagado: cualquiera podría falsificar anuncios vistos
   if (!config.adPostbackSecret || req.query.secret !== config.adPostbackSecret) {
+    logAd({ kind: 'postback', result: config.adPostbackSecret ? 'secreto incorrecto' : 'AD_POSTBACK_SECRET no está configurado',
+      ymid: String(req.query.ymid || ''), reward: String(req.query.reward_event_type || '') });
     throw new ApiError(403, 'bad_secret');
   }
   const ymid = String(req.query.ymid || '');
   const valued = req.query.reward_event_type === 'valued';
   const price = Math.max(0, Number(req.query.estimated_price) || 0);
   // solo se registran eventos pagados ("valued"); impresión y click llegan con el mismo ymid
+  logAd({ kind: 'postback', result: 'ok', ymid, reward: String(req.query.reward_event_type || ''),
+    event: String(req.query.event_type || ''), price });
   if (ymid && valued) {
     db.prepare(`INSERT INTO ad_postbacks (ymid, created_at, telegram_id, revenue) VALUES (?, ?, ?, ?)
                 ON CONFLICT(ymid) DO UPDATE SET revenue = revenue + excluded.revenue`)
@@ -112,6 +124,13 @@ const api = express.Router();
 api.use(auth);
 
 api.get('/me', wrap((req) => publicUser(req.user)));
+
+// el juego informa cuando un anuncio falla (para el diagnóstico del panel)
+api.post('/ads/error', wrap((req) => {
+  const clip = (v) => String(v ?? '').slice(0, 160);
+  logAd({ kind: 'juego', user: req.user.id, type: clip(req.body?.type), code: clip(req.body?.code), detail: clip(req.body?.detail) });
+  return { ok: true };
+}));
 
 api.post('/run/start', wrap((req) => {
   // cierra partidas viejas que quedaron abiertas
@@ -289,6 +308,7 @@ admin.post('/withdrawals/:id', wrap((req) => {
     return { ok: true };
   });
 }));
+admin.get('/ads-debug', wrap(() => adLog));
 admin.get('/stats', wrap(() => ({
   users: db.prepare('SELECT COUNT(*) c FROM users').get().c,
   runs24h: db.prepare('SELECT COUNT(*) c FROM runs WHERE started_at >= ?').get(now() - DAY).c,

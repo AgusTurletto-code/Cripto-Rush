@@ -32,7 +32,7 @@ function loadSdk() {
     const t = setInterval(() => {
       waited += 100;
       if (window[fnName]) { clearInterval(t); resolve(); }
-      else if (waited >= 10000) { clearInterval(t); loading = null; reject(new Error('ad_sdk_failed')); }
+      else if (waited >= 10000) { clearInterval(t); loading = null; reject(adError('ad_sdk_failed', 'el SDK de Monetag no cargó')); }
     }, 100);
   });
   return loading;
@@ -64,13 +64,22 @@ export async function showRewardedAd(ymid, requestVar) {
   let result;
   try {
     result = await window[fnName]({ ymid, requestVar });
-  } catch {
-    throw new Error('ad_sdk_failed');
+  } catch (e) {
+    throw adError('ad_sdk_failed', e?.message || e);
   } finally {
     preloads.delete(ymid);
   }
-  if (result?.reward_event_type !== 'valued') throw new Error('ad_not_completed');
+  if (result?.reward_event_type !== 'valued') {
+    throw adError('ad_not_completed', result ? `reward_event_type=${result.reward_event_type}` : 'sin datos del anuncio');
+  }
   return result;
+}
+
+/** Error con el detalle técnico que devolvió Monetag (sirve para el diagnóstico). */
+function adError(code, detail) {
+  const e = new Error(code);
+  e.detail = String(detail ?? '').slice(0, 160);
+  return e;
 }
 
 function fakeAd() {

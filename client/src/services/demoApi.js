@@ -68,4 +68,5 @@ export const demoApi = {
     return wait({ ok: true, usdCents, user: u });
   },
   withdrawals: () => wait(state.withdrawals),
+  reportAdError: () => Promise.resolve(),
 };

@@ -145,15 +145,20 @@ const AD_ERRORS = {
   ad_sdk_failed: 'No hay anuncios disponibles ahora. Intenta en un rato.',
   ad_not_completed: 'Tienes que ver el anuncio completo para recibir la recompensa.',
 };
-const adErrMsg = (e) => AD_ERRORS[e?.message] || errMsg(e);
+const adErrMsg = (e) => (AD_ERRORS[e?.message] || errMsg(e)) + (e?.detail ? ` (${e.detail})` : '');
 
 /** Muestra un anuncio y lo reclama en el servidor (con reintentos mientras llega el postback). */
 async function watchAd(type) {
   const ymid = adYmid(type);
-  await showRewardedAd(ymid, type);
+  try {
+    await showRewardedAd(ymid, type);
+  } catch (e) {
+    api.reportAdError(type, e.message, e.detail); // queda en el diagnóstico del panel /admin
+    throw e;
+  }
   for (let i = 0; ; i++) {
     try { return await api.claimAd(run.runId, type, ymid); } catch (e) {
-      if (e.message !== 'ad_not_verified' || i >= 4) throw e;
+      if (e.message !== 'ad_not_verified' || i >= 4) { api.reportAdError(type, e.message, 'el servidor no recibió el postback de Monetag'); throw e; }
       await new Promise((r) => setTimeout(r, 1500));
     }
   }

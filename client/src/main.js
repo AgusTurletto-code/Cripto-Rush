@@ -6,6 +6,7 @@ import { showRewardedAd, preloadAds, preloadAd } from './services/ads.js';
 import { initWallet, friendly, short } from './services/wallet.js';
 import { sfx, unlockAudio, isMuted, setMuted, startMusic, stopMusic, setMusicSpeed } from './services/sound.js';
 import { t, LANG, LOCALE, setLang } from './i18n.js';
+import { drawWheel, spinTo } from './ui/wheel.js';
 
 const ui = document.getElementById('ui');
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -118,8 +119,9 @@ function showHome() {
         <button class="btn btn-icon" id="chars">${portrait(user.character, 'mini')} ${esc(t('characters'))} <span class="mult">${fmtMult(multOf(user.character))}</span></button>
         <button class="btn green" id="wallet">${esc(t('withdraw'))}</button>
       </div>
-      <div class="row">
+      <div class="row row3">
         <button class="btn ${dailyReady ? 'gold-outline' : ''}" id="daily">${esc(t('daily'))}${dailyReady ? '<i class="dot"></i>' : ''}</button>
+        <button class="btn ${user.spins?.left ? 'gold-outline' : ''}" id="wheelbtn">${esc(t('wheel'))}${user.spins?.left ? `<i class="count">${user.spins.left}</i>` : ''}</button>
         <button class="btn" id="invite">${esc(t('invite'))}</button>
       </div>
       ${DEMO ? `<div class="hint" style="color:var(--gold)">${esc(t('demo_hint'))}</div>` : ''}
@@ -132,6 +134,7 @@ function showHome() {
   on('#wallet', showWallet);
   on('#daily', showDaily);
   on('#invite', showInvite);
+  on('#wheelbtn', showWheel);
   on('#sound', () => { setMuted(!isMuted()); toast(isMuted() ? t('sound_off') : t('sound_on'), 1200); showHome(); });
   on('#lang', () => setLang(LANG === 'es' ? 'en' : 'es'));
   if (dailyReady && !dailyShownThisSession) { dailyShownThisSession = true; setTimeout(showDaily, 400); }
@@ -206,7 +209,7 @@ function showVerifying(type) {
   hideVerifying();
   document.body.insertAdjacentHTML('beforeend', `<div class="verifying" id="verifying">
     <div class="spinner"></div><b>${esc(t('verifying'))}</b>
-    <small>${esc(t(type === 'revive' ? 'verifying_revive' : 'verifying_double'))}</small></div>`);
+    <small>${esc(t({ revive: 'verifying_revive', double: 'verifying_double', spin: 'verifying_spin' }[type]))}</small></div>`);
 }
 function hideVerifying() { document.getElementById('verifying')?.remove(); }
 
@@ -387,6 +390,109 @@ async function showInvite() {
     ? r.friends.map((f) => `<li><span>${esc(f.name)}<br><small class="legal">${new Date(f.since).toLocaleDateString(LOCALE)}</small></span>
         <span class="tag ${f.status === 'qualified' ? 'paid' : f.status === 'blocked' ? 'rejected' : 'pending'}">${esc(t('ref_' + (f.status || 'pending')))}</span></li>`).join('')
     : `<li>${esc(t('ref_none'))}</li>`;
+}
+
+// ---------- Ruleta ----------
+let wheelAngle = 0;
+let wheelTimer = null;
+const fmtWait = (ms) => {
+  const m = Math.max(1, Math.ceil(ms / 60000));
+  return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
+};
+
+function showWheel() {
+  const w = cfg.wheel;
+  if (!w) return;
+  // probabilidades agrupadas por premio (el 50 aparece en dos casilleros)
+  const byPrize = new Map();
+  for (const s of w.segments) if (!s.jackpot) byPrize.set(s.coins, (byPrize.get(s.coins) || 0) + s.odds);
+  const jackpot = w.segments.find((s) => s.jackpot);
+  const pct = (p) => (p * 100).toLocaleString(LOCALE, { maximumFractionDigits: 2 }) + '%';
+  const oddsRows = [...byPrize.entries()].sort((a, b) => a[0] - b[0])
+    .map(([coins, p]) => `<li><span>🪙 ${fmt(coins)}</span><span>${pct(p)}</span></li>`).join('')
+    + (jackpot ? `<li class="jp"><span>${esc(t('odds_jackpot', { usd: w.jackpotUsd, n: fmt(Math.round(1 / jackpot.odds)) }))}</span></li>` : '');
+
+  render(`<div class="screen scroll">
+    <div class="page-head"><button class="back" id="back" aria-label="${esc(t('back_btn'))}">←</button><h2>${esc(t('wheel_title'))}</h2><div class="pill" id="wbal">🪙 ${fmt(user.balance)}</div></div>
+    <p class="wheel-sub">${esc(t('wheel_sub', { max: w.spinsPer24h }))}</p>
+    <div class="wheel-wrap"><div class="wheel-pointer" aria-hidden="true"></div><canvas id="wheel" class="wheel" aria-label="${esc(t('wheel_title'))}"></canvas></div>
+    <p class="spins-left" id="spins-left"></p>
+    <button class="btn primary" id="spin" style="width:100%"></button>
+    <div class="box" style="margin-top:14px"><h3>${esc(t('odds_title'))}</h3><ul class="list odds">${oddsRows}</ul>
+      <p class="legal">${esc(t('wheel_note'))}</p></div>
+  </div>`);
+  const canvas = $('#wheel');
+  drawWheel(canvas, w.segments, { jackpot: t('jackpot_label', { usd: w.jackpotUsd }), fmt });
+  canvas.style.transform = `rotate(${wheelAngle}deg)`;
+  on('#back', () => { clearInterval(wheelTimer); showHome(); });
+  on('#spin', doSpin);
+  updateSpinUi();
+  clearInterval(wheelTimer);
+  wheelTimer = setInterval(() => { if (!$('#spin')) clearInterval(wheelTimer); else updateSpinUi(); }, 30000);
+}
+
+function updateSpinUi(busy = false) {
+  const s = user.spins || { left: 0, max: 10 };
+  const btn = $('#spin');
+  if (!btn) return;
+  $('#spins-left').textContent = t('spins_left', { n: s.left, max: s.max });
+  if (s.left > 0) { btn.disabled = busy; btn.textContent = t('spin_btn'); }
+  else { btn.disabled = true; btn.textContent = t('spin_next', { time: fmtWait((s.nextAt || Date.now()) - Date.now()) }); }
+}
+
+async function doSpin() {
+  unlockAudio();
+  updateSpinUi(true);
+  let start;
+  try { start = await api.spinStart(); } catch (e) { toast(errMsg(e)); updateSpinUi(); return; }
+  showVerifying('spin');
+  try {
+    await showRewardedAd(start.ymid, 'spin');
+  } catch (e) {
+    hideVerifying();
+    api.reportAdError('spin', e.message, e.detail);
+    toast(adErrMsg(e), 3500);
+    updateSpinUi();
+    return;
+  }
+  let r;
+  try { r = await api.spinClaim(start.spinId); } catch (e) { hideVerifying(); toast(errMsg(e), 3500); updateSpinUi(); return; }
+  hideVerifying();
+  user = r.user;
+  const canvas = $('#wheel');
+  if (canvas) {
+    wheelAngle = await spinTo(canvas, r.segment, cfg.wheel.segments.length, { from: wheelAngle, onTick: () => { sfx.tick(); haptic('light'); } });
+  }
+  if (r.jackpot) {
+    sfx.jackpot(); haptic('success'); confetti();
+    modal(`<h2>${esc(t('jackpot_title'))}</h2><div class="big">💎 ${cfg.wheel.jackpotUsd} USD</div>
+      <p>${esc(t('jackpot_body', { usd: cfg.wheel.jackpotUsd }))}</p>
+      ${r.pending ? `<p class="pending">⏳ ${esc(t('jackpot_pending'))}</p>` : ''}
+      <div class="stack"><button class="btn green" id="jp-wallet">${esc(t('withdraw'))}</button><button class="btn ghost" id="jp-close">${esc(t('back_btn'))}</button></div>`);
+    on('#jp-wallet', () => { closeModal(); clearInterval(wheelTimer); showWallet(); });
+    on('#jp-close', closeModal);
+  } else {
+    sfx.cash(); haptic('success');
+    toast(t('spin_won', { n: fmt(r.coins) }) + (r.pending ? ' ⏳ ' + t('spin_pending') : ''), r.pending ? 4000 : 2200);
+  }
+  const bal = $('#wbal'); if (bal) bal.textContent = '🪙 ' + fmt(user.balance);
+  updateSpinUi();
+}
+
+function confetti() {
+  const box = document.createElement('div');
+  box.className = 'confetti';
+  const colors = ['#ffd60a', '#ff006e', '#3a86ff', '#2ec4b6', '#fb5607', '#fff'];
+  for (let i = 0; i < 90; i++) {
+    const p = document.createElement('i');
+    p.style.left = Math.random() * 100 + '%';
+    p.style.background = colors[i % colors.length];
+    p.style.animationDelay = Math.random() * 0.8 + 's';
+    p.style.animationDuration = 2.2 + Math.random() * 1.6 + 's';
+    box.appendChild(p);
+  }
+  document.body.appendChild(box);
+  setTimeout(() => box.remove(), 4500);
 }
 
 // ---------- Personajes ----------

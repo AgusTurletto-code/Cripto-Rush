@@ -86,6 +86,21 @@ CREATE INDEX IF NOT EXISTS idx_dev_fp ON user_devices(fp);
 CREATE INDEX IF NOT EXISTS idx_dev_ip ON user_devices(ip);
 `);
 
+// Ruleta: un registro por giro
+db.exec(`
+CREATE TABLE IF NOT EXISTS spins (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  claimed_at INTEGER,                         -- cuándo se giró (cuenta para el límite de 24 h)
+  status     TEXT NOT NULL DEFAULT 'started', -- started | pending (esperando a Monetag) | done
+  segment    INTEGER,
+  coins      INTEGER NOT NULL DEFAULT 0,
+  jackpot    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_spins_user ON spins(user_id, claimed_at);
+`);
+
 // Migraciones simples: columnas agregadas después de la primera versión
 const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
 const addUserCol = (name, def) => { if (!userCols.includes(name)) db.exec(`ALTER TABLE users ADD COLUMN ${name} ${def}`); };

@@ -7,6 +7,7 @@ import { db, tx } from './db.js';
 import { validateInitData, signSession, verifySession } from './auth.js';
 import { checkRun, CHARACTERS, multiplierOf, creditFor } from './game.js';
 import { rate, minWithdrawCoins, economyState, recordIssued, recordSpent, recompute } from './economy.js';
+import { WHEEL, pickSegment, publicWheel } from './wheel.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -14,6 +15,7 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '20kb' }));
 
 const now = () => Date.now();
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const DAY = 24 * 3600 * 1000;
 const startOfDay = () => { const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d.getTime(); };
 
@@ -135,7 +137,17 @@ function publicUser(u) {
     owned: JSON.parse(u.owned),
     earnedToday,
     daily: dailyState(u),
+    spins: spinStatus(u.id),
   };
+}
+
+/** Giros disponibles en las últimas 24 h (ventana móvil) y cuándo se libera el próximo. */
+function spinStatus(userId) {
+  const max = WHEEL.spinsPer24h;
+  const rows = db.prepare('SELECT claimed_at FROM spins WHERE user_id = ? AND claimed_at >= ? ORDER BY claimed_at')
+    .all(userId, now() - DAY);
+  const left = Math.max(0, max - rows.length);
+  return { left, max, nextAt: left > 0 ? null : rows[0].claimed_at + DAY };
 }
 
 function dailyState(u) {
@@ -170,6 +182,7 @@ app.get('/api/config', wrap(() => ({
   characters: CHARACTERS,
   devMode: config.devMode,
   dailyRewards: config.economy.dailyRewards,
+  wheel: publicWheel(),
   referrals: {
     commission: config.referrals.commission,
     qualifyCoins: config.referrals.qualifyCoins,
@@ -229,6 +242,7 @@ app.get('/api/ads/postback', wrap((req) => {
                   ON CONFLICT(ymid) DO UPDATE SET revenue = revenue + excluded.revenue`)
         .run(ymid, now(), String(req.query.telegram_id || ''), price);
       settlePendingAd(ymid, String(req.query.telegram_id || ''));
+      settleSpin(ymid, String(req.query.telegram_id || ''));
     });
   }
   return { ok: true };
@@ -306,7 +320,6 @@ function claimAd(req, allowPending = false) {
   return { ok: true, pending: !verified };
 }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 api.post('/ads/claim', async (req, res) => {
   // Esperamos un poco el aviso de Monetag; si tarda más, se acepta como pendiente (sin hacer esperar al jugador).
   const deadline = now() + 2500;
@@ -399,6 +412,79 @@ function payReferral(userId, credited) {
   if (commission > 0) addTo(u.referred_by, commission, commission);
 }
 
+// ---------- Ruleta ----------
+/** Entrega el premio de un giro (monedas o premio mayor). Se llama dentro de una transacción. */
+function grantSpin(spin) {
+  if (spin.coins > 0) {
+    db.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ?').run(spin.coins, spin.coins, spin.user_id);
+    recordIssued(spin.coins);
+  }
+  if (spin.jackpot) {
+    // el premio mayor se paga en cripto: queda como retiro pendiente para revisarlo a mano
+    const u = getUser.get(spin.user_id);
+    db.prepare(`INSERT INTO withdrawals (user_id, coins, usd_cents, currency, wallet, status, note, created_at)
+                VALUES (?, 0, ?, 'USDT_TON', ?, 'pending', ?, ?)`)
+      .run(spin.user_id, WHEEL.jackpotUsd * 100, u.wallet || '', `JACKPOT ruleta (giro ${spin.id})`, now());
+    console.warn(`[ruleta] 🏆 PREMIO MAYOR para ${spin.user_id} (giro ${spin.id})`);
+  }
+  db.prepare(`UPDATE spins SET status = 'done' WHERE id = ?`).run(spin.id);
+}
+
+/** Llegó la confirmación de Monetag del anuncio de un giro que quedó pendiente. */
+function settleSpin(ymid, telegramId) {
+  if (!ymid.startsWith('spin_')) return;
+  const spin = db.prepare('SELECT * FROM spins WHERE id = ?').get(ymid.slice(5));
+  if (!spin || spin.status !== 'pending' || (telegramId && telegramId !== spin.user_id)) return;
+  grantSpin(spin);
+}
+
+api.post('/spin/start', wrap((req) => {
+  const st = spinStatus(req.user.id);
+  if (st.left <= 0) throw new ApiError(429, 'spin_limit');
+  const id = crypto.randomUUID();
+  db.prepare('INSERT INTO spins (id, user_id, created_at) VALUES (?, ?, ?)').run(id, req.user.id, now());
+  return { spinId: id, ymid: `spin_${id}` };
+}));
+
+function claimSpin(req, allowPending) {
+  const spin = db.prepare('SELECT * FROM spins WHERE id = ? AND user_id = ?').get(String(req.body?.spinId || ''), req.user.id);
+  if (!spin) throw new ApiError(404, 'spin_not_found');
+  const result = (sp) => ({ segment: sp.segment, coins: sp.coins, jackpot: !!sp.jackpot, pending: sp.status === 'pending',
+    user: publicUser(getUser.get(req.user.id)) });
+  if (spin.status !== 'started') return result(spin); // ya se giró: devolver lo mismo
+
+  const pb = db.prepare('SELECT telegram_id FROM ad_postbacks WHERE ymid = ?').get(`spin_${spin.id}`);
+  if (pb?.telegram_id && pb.telegram_id !== req.user.id) throw new ApiError(403, 'ad_not_verified');
+  const verified = !!pb || config.adVerifyMode !== 'postback';
+  if (!verified && !allowPending) throw new ApiError(402, 'ad_not_verified');
+
+  return tx(() => {
+    if (spinStatus(req.user.id).left <= 0) throw new ApiError(429, 'spin_limit');
+    const segment = pickSegment();
+    const seg = WHEEL.segments[segment];
+    db.prepare(`UPDATE spins SET status = ?, segment = ?, coins = ?, jackpot = ?, claimed_at = ? WHERE id = ?`)
+      .run(verified ? 'done' : 'pending', segment, seg.coins || 0, seg.jackpot ? 1 : 0, now(), spin.id);
+    const updated = db.prepare('SELECT * FROM spins WHERE id = ?').get(spin.id);
+    if (verified) { grantSpin(updated); updated.status = 'done'; }
+    return result(updated);
+  });
+}
+
+api.post('/spin/claim', async (req, res) => {
+  // esperamos un poco el aviso de Monetag; si tarda, el giro sale igual y el premio se entrega al confirmarse
+  const deadline = now() + 3000;
+  for (;;) {
+    try {
+      return res.json(claimSpin(req, now() >= deadline));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 402 && now() < deadline) { await sleep(150); continue; }
+      if (e instanceof ApiError) return res.status(e.status).json({ error: e.code });
+      console.error(e);
+      return res.status(500).json({ error: 'server_error' });
+    }
+  }
+});
+
 // Recompensa diaria
 api.post('/daily/claim', wrap((req) => tx(() => {
   const u = getUser.get(req.user.id);
@@ -458,6 +544,7 @@ api.post('/wallet', wrap((req) => {
     throw new ApiError(409, 'wallet_in_use');
   }
   db.prepare('UPDATE users SET wallet = ?, wallet_key = ? WHERE id = ?').run(address, key, req.user.id);
+  db.prepare(`UPDATE withdrawals SET wallet = ? WHERE user_id = ? AND status = 'pending' AND wallet = ''`).run(address, req.user.id);
   return publicUser(getUser.get(req.user.id));
 }));
 
@@ -554,6 +641,8 @@ admin.get('/stats', wrap(() => ({
   adRevenueTotal: db.prepare('SELECT COALESCE(SUM(revenue),0) s FROM ad_postbacks').get().s,
   adVerifyMode: config.adVerifyMode,
   economy: economyState(),
+  spins24h: db.prepare('SELECT COUNT(*) c FROM spins WHERE claimed_at >= ?').get(now() - DAY).c,
+  jackpots: db.prepare('SELECT COUNT(*) c FROM spins WHERE jackpot = 1').get().c,
   db: { path: config.dbPath, persistent: config.dbPersistent, volume: config.volumePath, onRailway: !!process.env.RAILWAY_ENVIRONMENT },
   referralsConfigured: !!config.referrals.botUsername,
   dailyClaims24h: db.prepare('SELECT COUNT(*) c FROM users WHERE daily_last = ?').get(dayStr()).c,

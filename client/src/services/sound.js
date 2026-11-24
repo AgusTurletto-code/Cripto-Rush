@@ -85,6 +85,11 @@ export const sfx = {
   revive() { [392, 523, 659, 784, 1047].forEach((f, i) => tone({ f, dur: 0.15, vol: 0.14, type: 'triangle', at: i * 0.07 })); },
   cash() { [1047, 1319, 1568, 2093].forEach((f, i) => tone({ f, dur: 0.1, vol: 0.12, type: 'square', at: i * 0.05 })); },
   click() { tone({ f: 700, dur: 0.04, vol: 0.08, type: 'triangle' }); },
+  tick() { tone({ f: 1500, dur: 0.025, vol: 0.06, type: 'square' }); },
+  jackpot() {
+    [523, 659, 784, 1047, 784, 1047, 1319, 1568].forEach((f, i) => tone({ f, dur: 0.22, vol: 0.16, type: 'square', at: i * 0.11 }));
+    noise({ dur: 1.2, vol: 0.15, from: 6000, to: 2000, at: 0.9 });
+  },
   hint() { tone({ f: 660, dur: 0.08, vol: 0.12, type: 'sine' }); tone({ f: 880, dur: 0.12, vol: 0.12, type: 'sine', at: 0.09 }); },
 };
 

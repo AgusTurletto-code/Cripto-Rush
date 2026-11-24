@@ -1,0 +1,17 @@
+{
+  "_info": "Ruleta. weight = probabilidad relativa (sobre la suma total, hoy 1.000.000). El premio mayor tiene weight 1 = 1 en 1.000.000. Los casilleros se dibujan en este orden, en sentido horario empezando arriba.",
+  "spinsPer24h": 10,
+  "jackpotUsd": 100,
+  "segments": [
+    { "coins": 50,   "weight": 200000, "color": "#3a86ff" },
+    { "coins": 150,  "weight": 150000, "color": "#8338ec" },
+    { "coins": 75,   "weight": 200000, "color": "#ff006e" },
+    { "coins": 300,  "weight": 80000,  "color": "#fb5607" },
+    { "coins": 50,   "weight": 150000, "color": "#2ec4b6" },
+    { "coins": 500,  "weight": 40000,  "color": "#3a86ff" },
+    { "coins": 100,  "weight": 150000, "color": "#8338ec" },
+    { "coins": 1000, "weight": 20000,  "color": "#ff006e" },
+    { "coins": 2500, "weight": 9999,   "color": "#fb5607" },
+    { "jackpot": true, "weight": 1,    "color": "#ffd60a" }
+  ]
+}

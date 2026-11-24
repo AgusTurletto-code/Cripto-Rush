@@ -54,6 +54,7 @@ async function load() {
     ['Verificación de anuncios', s.adVerifyMode === 'postback' ? '✅ postback' : '⚠️ solo cliente'],
     ['Referidos', s.referralsConfigured ? `${s.referredUsers} invitados · ${s.blockedReferrals} bloqueados` : '⚠️ falta BOT_USERNAME'],
     ['Diarios reclamados hoy', s.dailyClaims24h],
+    ['Ruleta 24h', `${s.spins24h} giros · ${s.jackpots} premio(s) mayor(es) en total`],
     ['Tasa (monedas = $1)', s.economy ? `${Number(s.economy.rate).toLocaleString('es')} · ${({ auto: '🤖 automática', learning: '📚 aprendiendo (pocos datos)', fixed: '📌 fija' })[s.economy.mode] || s.economy.mode}` : '?'],
     ['Base de la tasa', s.economy ? `ingresos ${s.economy.windowDays || 7}d $${s.economy.revenue ?? 0} · monedas ${Number(s.economy.netCoins || 0).toLocaleString('es')} · devuelve ${Math.round(s.economy.share * 100)}%` : '?'],
     ['Base de datos', s.db ? (s.db.persistent ? '✅ disco permanente' : (s.db.onRailway ? '🚨 se borra al reiniciar' : 'local')) : '?'],
@@ -80,6 +81,8 @@ async function load() {
 function signals(w) {
   const l = w.linked || {};
   const out = [];
+  if ((w.note || '').includes('JACKPOT')) out.push('<b class="bad" style="font-size:15px">🏆 PREMIO MAYOR DE LA RULETA ($' + (w.usd_cents / 100) + '): revisá TODO antes de pagar</b>');
+  if (!w.wallet) out.push('<span class="bad">⚠️ todavía no conectó una wallet</span>');
   if (l.device) out.push(`<span class="bad">⚠️ ${l.device} cuenta(s) en el mismo teléfono</span>`);
   if (l.wallet) out.push(`<span class="bad">⚠️ ${l.wallet} cuenta(s) con la misma wallet</span>`);
   if (l.ip) out.push(`<span class="warn">ℹ️ ${l.ip} cuenta(s) con la misma IP (puede ser familia o wifi compartido)</span>`);

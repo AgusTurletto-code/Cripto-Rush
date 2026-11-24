@@ -132,6 +132,16 @@ El repo incluye un `Dockerfile`: Railway lo detecta solo.
   - El panel `/admin` muestra en cada retiro las cuentas vinculadas (mismo teléfono / wallet / IP) y permite suspenderlas.
   - La IP es una señal débil (familias, wifi público y datos móviles comparten IP): revisala, no rechaces solo por eso.
 
+## Ruleta
+
+- Hasta `spinsPer24h` (10) giros cada 24 h (ventana móvil), y **cada giro requiere ver un anuncio**.
+- Los premios y sus probabilidades están en **`shared/wheel.json`** (`weight` sobre el total; hoy suma 1.000.000).
+- Premio mayor: **`jackpotUsd` (100 USD) con probabilidad 1 en 1.000.000**. Costo esperado: ~$0,0001 por giro.
+- El sorteo lo hace el servidor con un generador criptográfico; el juego solo anima hasta el resultado.
+- Monedas y premio mayor se entregan **solo cuando Monetag confirma el anuncio** (postback). Si tarda, el giro sale igual y el premio llega al confirmarse.
+- El premio mayor crea un **retiro pendiente de 100 USD** marcado como 🏆 en el panel `/admin`: revisá todo (cuentas vinculadas, partidas, anuncios) antes de pagar.
+- Si cambiás las probabilidades, el juego las muestra solas en la pantalla de la ruleta.
+
 ## Economía y pagos
 
 ### Tasa automática (monedas por dólar)

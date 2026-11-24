@@ -1,6 +1,11 @@
 // API simulada para la versión demo (VITE_DEMO=1): todo se guarda en el navegador.
 // No sirve para producción: el jugador podría editar su saldo.
 import { CHARACTERS } from '../game/characters.js';
+import WHEEL from '../../../shared/wheel.json';
+
+const WTOTAL = WHEEL.segments.reduce((s, x) => s + x.weight, 0);
+const publicWheel = { spinsPer24h: WHEEL.spinsPer24h, jackpotUsd: WHEEL.jackpotUsd,
+  segments: WHEEL.segments.map((s) => ({ coins: s.coins || 0, jackpot: !!s.jackpot, color: s.color, odds: s.weight / WTOTAL })) };
 
 const KEY = 'cryptorush-demo-v3';
 const CFG = {
@@ -8,6 +13,7 @@ const CFG = {
   currencies: ['USDT_TON', 'TON'],
   characters: CHARACTERS,
   dailyRewards: [100, 150, 200, 300, 400, 600, 1000],
+  wheel: publicWheel,
   referrals: { commission: 0.1, qualifyCoins: 1000, referrerBonus: 2000, welcomeBonus: 500 },
 };
 const dayStr = (t = Date.now()) => new Date(t).toISOString().slice(0, 10);
@@ -17,6 +23,9 @@ function withDaily(u) {
   const streak = claimedToday || u.dailyLast === yesterday ? (u.dailyStreak || 0) : 0;
   const n = CFG.dailyRewards.length;
   u.daily = { claimedToday, streak, day: claimedToday ? ((streak - 1) % n) + 1 : (streak % n) + 1, rewards: CFG.dailyRewards };
+  const spins = (u.spinLog || []).filter((t) => t > Date.now() - 864e5).sort();
+  const left = Math.max(0, WHEEL.spinsPer24h - spins.length);
+  u.spins = { left, max: WHEEL.spinsPer24h, nextAt: left > 0 ? null : spins[0] + 864e5 };
   return u;
 }
 
@@ -47,6 +56,20 @@ export const demoApi = {
     u.balance += reward; u.dailyStreak = streak; u.dailyLast = dayStr();
     save();
     return wait({ reward, streak, user: withDaily(u) });
+  },
+  spinStart() {
+    if (withDaily(state.user).spins.left <= 0) fail('spin_limit');
+    return wait({ spinId: 'demo-' + Date.now(), ymid: 'spin_demo' });
+  },
+  spinClaim() {
+    const u = state.user;
+    let r = Math.random() * WTOTAL, segment = 0;
+    for (let i = 0; i < WHEEL.segments.length; i++) { r -= WHEEL.segments[i].weight; if (r < 0) { segment = i; break; } }
+    const seg = WHEEL.segments[segment];
+    u.balance += seg.coins || 0;
+    u.spinLog = [...(u.spinLog || []), Date.now()];
+    save();
+    return wait({ segment, coins: seg.coins || 0, jackpot: !!seg.jackpot, pending: false, user: withDaily(u) });
   },
   referrals: () => wait({
     link: 'https://t.me/TuBot/play?startapp=ref_demo', total: 2, qualified: 1, earnings: 2140,

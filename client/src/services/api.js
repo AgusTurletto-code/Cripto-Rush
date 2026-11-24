@@ -66,6 +66,8 @@ const realApi = {
   withdrawals: () => call('GET', '/withdrawals'),
   claimDaily: () => call('POST', '/daily/claim'),
   referrals: () => call('GET', '/referrals'),
+  spinStart: () => call('POST', '/spin/start'),
+  spinClaim: (spinId) => call('POST', '/spin/claim', { spinId }),
 };
 
 export const api = DEMO ? demoApi : realApi;

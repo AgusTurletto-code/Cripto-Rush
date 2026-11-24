@@ -15,6 +15,8 @@ let user = null;
 let cfg = null;
 let run = null; // { runId, seed, revived, doubled }
 const usd = (coins) => (coins / cfg.coinsPerUsd).toFixed(2);
+const multOf = (id) => CHARACTERS[id]?.multiplier ?? 1;
+const fmtMult = (m) => 'x' + Number(m).toLocaleString('es', { maximumFractionDigits: 2 });
 
 function toast(msg, ms = 2200) {
   const t = document.getElementById('toast');
@@ -72,12 +74,12 @@ function showHome() {
     <div class="home-actions">
       <button class="btn primary" id="play">▶ JUGAR</button>
       <div class="row">
-        <button class="btn btn-icon" id="chars">${portrait(user.character, 'mini')} Personajes</button>
+        <button class="btn btn-icon" id="chars">${portrait(user.character, 'mini')} Personajes <span class="mult">${fmtMult(multOf(user.character))}</span></button>
         <button class="btn green" id="wallet">💸 Retirar</button>
       </div>
       ${DEMO ? '<div class="hint" style="color:var(--gold)">🧪 Versión demo: anuncios simulados y retiros de prueba</div>' : ''}
       <div class="hint">Desliza ⬅️ ➡️ para cambiar de carril · ⬆️ saltar · ⬇️ deslizarte<br>
-      Hoy ganaste ${fmt(user.earnedToday)} / ${fmt(cfg.dailyCoinCap)} monedas</div>
+      ${esc(CHARACTERS[user.character]?.name)} multiplica tus monedas ${fmtMult(multOf(user.character))}</div>
     </div>
   </div>`);
   on('#play', startRun);
@@ -89,7 +91,7 @@ function showHud() {
   render(`
   <div class="hud">
     <div class="top">
-      <div><div class="coins" id="h-coins">🪙 0</div><div class="powerups" id="h-pu"></div></div>
+      <div><div class="coins"><span id="h-coins">🪙 0</span> <span class="mult">${fmtMult(run.multiplier)}</span></div><div class="powerups" id="h-pu"></div></div>
       <div style="display:flex"><div class="dist" id="h-dist">0 m</div><button class="pause" id="pause">⏸</button></div>
     </div>
   </div>`);
@@ -182,13 +184,16 @@ function showGameOver() {
   closeModal();
   hudEls = null;
   const { coins, distance } = game.result;
+  const mult = run.multiplier ?? 1;
+  const total = Math.floor(coins * mult); // igual que el servidor
   render('');
   modal(`<h2>Fin de la partida</h2>
     <div class="stats"><div>Distancia<b>${fmt(distance)} m</b></div><div>Récord<b>${fmt(Math.max(distance, user.bestDistance))} m</b></div></div>
-    <div class="big" id="go-coins">🪙 ${coins}</div>
+    <div class="big" id="go-coins">🪙 ${fmt(total)}</div>
+    ${mult !== 1 && coins > 0 ? `<p>${fmt(coins)} monedas × ${fmtMult(mult).slice(1)} de ${esc(CHARACTERS[game.characterId]?.name)}</p>` : ''}
     <div class="stack">
-      ${coins > 0 ? `<button class="btn primary" id="double">📺 x2 = ${coins * 2} monedas</button>` : ''}
-      <button class="btn" id="collect">${coins > 0 ? 'Cobrar ' + coins : 'Volver'}</button>
+      ${coins > 0 ? `<button class="btn primary" id="double">📺 x2 = ${fmt(total * 2)} monedas</button>` : ''}
+      <button class="btn" id="collect">${coins > 0 ? 'Cobrar ' + fmt(total) : 'Volver'}</button>
     </div>`);
   const finish = async () => {
     ui.querySelectorAll('.modal button').forEach((b) => (b.disabled = true));
@@ -199,7 +204,7 @@ function showGameOver() {
       if (r.credited > 0) haptic('success');
       modal(`<h2>${r.doubled ? '🚀 ¡Duplicado!' : '💰 ¡Cobrado!'}</h2>
         <div class="big">+${fmt(r.credited)}</div>
-        <p>${r.capped ? `Llegaste al tope diario de ${fmt(cfg.dailyCoinCap)} monedas.` : `Saldo: ${fmt(user.balance)} (≈ $${usd(user.balance)})`}</p>
+        <p>${r.capped ? 'Llegaste al tope diario de monedas.' : `Saldo: ${fmt(user.balance)} (≈ $${usd(user.balance)})`}</p>
         <div class="stack"><button class="btn primary" id="again">▶ Otra vez</button><button class="btn ghost" id="home">Menú</button></div>`);
       on('#again', () => { closeModal(); showHome(); startRun(); });
       on('#home', () => { closeModal(); showHome(); });
@@ -214,7 +219,7 @@ function showGameOver() {
     try {
       await watchAd('double');
       run.doubled = true;
-      $('#go-coins').textContent = '🪙 ' + coins * 2;
+      $('#go-coins').textContent = '🪙 ' + fmt(total * 2);
     } catch (e) {
       toast(e.message === 'ad_sdk_failed' ? 'No hay anuncios disponibles ahora' : errMsg(e));
     }
@@ -225,9 +230,10 @@ function showGameOver() {
 function showCharacters() {
   const cards = Object.entries(CHARACTERS).map(([id, c]) => {
     const owned = user.owned.includes(id);
-    const price = cfg.characters[id]?.price ?? 0;
+    const price = c.price ?? 0;
     const sel = user.character === id;
     return `<div class="card ${sel ? 'sel' : ''}">
+      <span class="mult card-mult">${fmtMult(c.multiplier)} monedas</span>
       ${portrait(id)}<h3>${esc(c.name)}</h3><p>${esc(c.desc)}</p>
       <button class="btn ${owned ? '' : 'primary'}" data-id="${id}" data-preview="${id}" ${sel ? 'disabled' : ''}>
         ${sel ? 'En uso' : owned ? 'Usar' : '🪙 ' + fmt(price)}</button></div>`;
@@ -242,7 +248,7 @@ function showCharacters() {
     b.onclick = async () => {
       const id = b.dataset.id;
       const owned = user.owned.includes(id);
-      if (!owned && !(await askConfirm(`¿Comprar ${CHARACTERS[id].name} por ${fmt(cfg.characters[id].price)} monedas?`))) return;
+      if (!owned && !(await askConfirm(`¿Comprar ${CHARACTERS[id].name} por ${fmt(CHARACTERS[id].price)} monedas? Multiplica tus monedas ${fmtMult(CHARACTERS[id].multiplier)}.`))) return;
       try {
         user = await api.buyCharacter(id);
         game.setCharacter(id);

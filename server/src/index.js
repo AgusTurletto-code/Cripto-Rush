@@ -5,7 +5,7 @@ import express from 'express';
 import { config } from './config.js';
 import { db, tx } from './db.js';
 import { validateInitData, signSession, verifySession } from './auth.js';
-import { checkRun, CHARACTERS } from './game.js';
+import { checkRun, CHARACTERS, multiplierOf, creditFor } from './game.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -111,9 +111,11 @@ api.post('/run/start', wrap((req) => {
               WHERE user_id=? AND status='active'`).run(now(), req.user.id);
   const id = crypto.randomUUID();
   const seed = crypto.randomInt(1, 2 ** 31 - 1);
-  db.prepare('INSERT INTO runs (id, user_id, seed, started_at) VALUES (?, ?, ?, ?)')
-    .run(id, req.user.id, seed, now());
-  return { runId: id, seed };
+  // el multiplicador se fija al empezar: cambiar de personaje a mitad de partida no lo altera
+  const multiplier = multiplierOf(req.user.character);
+  db.prepare('INSERT INTO runs (id, user_id, seed, started_at, character, multiplier) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(id, req.user.id, seed, now(), req.user.character, multiplier);
+  return { runId: id, seed, multiplier };
 }));
 
 function getActiveRun(userId, runId) {
@@ -176,8 +178,9 @@ api.post('/run/end', wrap((req) => {
     const earnedToday = db.prepare(
       'SELECT COALESCE(SUM(credited),0) AS s FROM runs WHERE user_id = ? AND ended_at >= ?'
     ).get(req.user.id, startOfDay()).s;
-    const gross = run.doubled ? coins * 2 : coins;
-    const credited = Math.max(0, Math.min(gross, config.economy.dailyCoinCap - earnedToday));
+    const gross = creditFor(coins, run.multiplier, run.doubled);
+    const cap = config.economy.dailyCoinCap;
+    const credited = cap > 0 ? Math.max(0, Math.min(gross, cap - earnedToday)) : gross;
 
     db.prepare(`UPDATE runs SET status='finished', ended_at=?, coins=?, distance=?, credited=? WHERE id=?`)
       .run(now(), coins, Math.floor(distance), credited, run.id);
@@ -189,6 +192,7 @@ api.post('/run/end', wrap((req) => {
       credited,
       capped: credited < gross,
       doubled: !!run.doubled,
+      multiplier: run.multiplier,
       user: publicUser(getUser.get(req.user.id)),
     };
   });

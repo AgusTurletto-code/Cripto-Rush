@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { RULES } from './config.js';
 
 /** Distancia máxima físicamente posible en `t` segundos. */
@@ -28,10 +29,13 @@ export function checkRun({ coins, distance, serverSeconds }) {
   return null;
 }
 
-// Personajes paródicos. El precio se paga con monedas (también sirve para que no todo se retire).
-export const CHARACTERS = {
-  hank:    { name: 'Hodl Hank',         price: 0 },
-  muskrat: { name: 'Elon Muskrat',      price: 15000 },
-  thump:   { name: 'Donald Thump',      price: 15000 },
-  satoshi: { name: 'Satoshi Nakamochi', price: 30000 },
-};
+// Catálogo compartido con el cliente (shared/characters.json): nombre, precio y multiplicador.
+// El precio se paga con monedas (también sirve para que no todo se retire).
+const raw = JSON.parse(fs.readFileSync(new URL('../../shared/characters.json', import.meta.url), 'utf8'));
+export const CHARACTERS = Object.fromEntries(Object.entries(raw).filter(([k]) => !k.startsWith('_')));
+export const multiplierOf = (id) => CHARACTERS[id]?.multiplier ?? 1;
+
+/** Monedas que se acreditan: recolectadas × multiplicador del personaje × 2 si vio el anuncio. */
+export function creditFor(coins, multiplier, doubled) {
+  return Math.floor(coins * multiplier) * (doubled ? 2 : 1);
+}

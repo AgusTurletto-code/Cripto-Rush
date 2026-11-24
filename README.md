@@ -6,6 +6,7 @@ y las canjean por **USDT o TON** en su wallet.
 
 ```
 crypto-rush/
+├── shared/characters.json  # catálogo de personajes (precio y multiplicador)
 ├── client/                 # Juego (Vite + Three.js + TON Connect)
 │   ├── src/game/           # motor: world.js (pista), game.js (física), characters.js
 │   ├── src/services/       # api, anuncios Monetag, Telegram, wallet
@@ -30,7 +31,29 @@ crypto-rush/
 | Camiones Bear Express | hay que esquivarlos de carril | |
 
 Power-ups: 🐋 Ballena imán · 🚀 To the Moon (vuelo) · 🛡️ Escudo HODL.
-Personajes: Hodl Hank (gratis), Elon Muskrat, Donald Thump, Satoshi Nakamochi (se compran con monedas).
+
+### Personajes y multiplicadores
+
+Cada personaje multiplica las monedas de la partida. El catálogo vive en **`shared/characters.json`**
+y lo usan tanto el juego como el servidor (el servidor es el que aplica el multiplicador al cobrar).
+
+| Personaje | Precio | Multiplicador |
+|---|---|---|
+| Hodl Hank | gratis | x1 |
+| Elon Muskrat | 15 000 | x1,2 |
+| Donald Thump | 15 000 | x1,2 |
+| Pepe Trader | 25 000 | x1,3 |
+| Bruno Bull | 40 000 | x1,5 |
+| Captain Shiba | 60 000 | x1,75 |
+| Satoshi Nakamochi | 100 000 | x2 |
+
+**Agregar un personaje nuevo:**
+1. Sumá una entrada en `shared/characters.json` (`name`, `desc`, `price`, `multiplier`).
+2. Agregá su modelo en `BUILDERS` dentro de `client/src/game/characters.js` (mismo id). Si no tiene modelo, usa el de Hodl Hank.
+3. Compilá el cliente y reiniciá el servidor. La tienda, las miniaturas y el cálculo de monedas se actualizan solos.
+
+> Pepe Trader es una rana con diseño propio. La rana "Pepe" original tiene derechos de autor:
+> no copies su cara ni uses imágenes del meme.
 
 ## Probarlo en tu computadora
 
@@ -77,14 +100,16 @@ Valores por defecto (todos se cambian en `server/.env`):
 |---|---|---|
 | `COINS_PER_USD` | 20 000 | 20 000 monedas = 1 USD |
 | `MIN_WITHDRAW_COINS` | 40 000 | retiro mínimo de 2 USD |
-| `DAILY_COIN_CAP` | 6 000 | un jugador puede ganar como máximo 0,30 USD por día |
+| `DAILY_COIN_CAP` | 0 | sin límite diario (poné un número para limitar lo que gana cada jugador por día) |
 | `MAX_ADS_PER_DAY` | 40 | anuncios con recompensa por jugador por día |
 | `MAX_WITHDRAWALS_PER_DAY` | 1 | |
 
 **Haz las cuentas con tus datos reales de Monetag.** Si un anuncio te paga ~$0,01 y un jugador
-mira 10 por día, generas ~$0,10 por día con él. Con el tope por defecto podrías pagarle hasta $0,30.
-Esa diferencia la compensan los jugadores que no llegan al mínimo de retiro y lo que se gasta en personajes,
-pero **mira el panel `/admin`** (monedas en circulación vs. lo que ganas) y ajusta `COINS_PER_USD` y `DAILY_COIN_CAP` hasta que los números den.
+mira 10 por día, generas ~$0,10 por día con él. Sin tope diario y con multiplicadores de hasta x2,
+un jugador muy activo puede ganar más monedas de lo que generan sus anuncios.
+Lo compensan los jugadores que no llegan al mínimo de retiro y lo que se gasta en personajes,
+pero **mira el panel `/admin`** (monedas en circulación vs. lo que ganas) y ajusta `COINS_PER_USD`,
+los precios y multiplicadores de `shared/characters.json` o `DAILY_COIN_CAP` si los números no dan.
 
 ### Cómo se pagan los retiros
 

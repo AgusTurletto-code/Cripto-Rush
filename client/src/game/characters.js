@@ -6,12 +6,9 @@ import * as THREE from 'three';
 // El modelo mira hacia +Z; el juego lo gira para que corra hacia -Z.
 // ---------------------------------------------------------------------------
 
-export const CHARACTERS = {
-  hank: { name: 'Hodl Hank', desc: 'Compró en el pico de 2021. Manos de diamante.' },
-  muskrat: { name: 'Elon Muskrat', desc: 'Tuitea a las 3 AM. Mueve mercados.' },
-  thump: { name: 'Donald Thump', desc: 'Aranceles a la Luna. Los mejores aranceles.' },
-  satoshi: { name: 'Satoshi Nakamochi', desc: 'Nadie sabe quién es. Ni él.' },
-};
+// Catálogo (nombre, descripción, precio, multiplicador) compartido con el servidor.
+import catalog from '../../../shared/characters.json';
+export const CHARACTERS = Object.fromEntries(Object.entries(catalog).filter(([k]) => !k.startsWith('_')));
 
 // Sombreado de 3 tonos (look de dibujo animado)
 const gradientMap = (() => {
@@ -152,8 +149,8 @@ function buildRig(p) {
   // cabeza grande (estilo chibi)
   const neck = new THREE.Group(); neck.position.y = 0.66; torso.add(neck);
   const head = new THREE.Group(); head.position.y = 0.3; neck.add(head);
-  const skull = mesh(sphere(0.34, 24, 20), toon(p.skin), 0.04);
-  skull.scale.set(1, 0.98, 0.95);
+  const skull = mesh(sphere(0.34, 24, 20), toon(p.headSkin ?? p.skin), 0.04);
+  skull.scale.set(...(p.headScale ?? [1, 0.98, 0.95]));
   head.add(skull);
   if (p.ears !== false) {
     for (const s of [-1, 1]) {
@@ -162,7 +159,7 @@ function buildRig(p) {
     }
   }
 
-  return { root, body, hips, torso, legs, arms, neck, head, chest };
+  return { root, body, hips, torso, legs, arms, neck, head, chest, skull };
 }
 
 // ---------- Personajes ----------
@@ -254,6 +251,135 @@ const BUILDERS = {
     return r;
   },
 
+  pepe() {
+    // Rana trader (diseño propio): cabeza ancha, ojos saltones arriba, auriculares y chaleco de operador
+    const green = 0x4caf50;
+    const r = buildRig({ skin: green, shirt: 0xf5f5f5, sleeve: 0xf5f5f5, forearm: green, pants: 0x263238, shoes: 0x3e2723, sole: 0xffffff, ears: false, headScale: [1.28, 0.82, 1.0] });
+    const { head, torso, chest } = r;
+    // panza/papada clara
+    const chin = mesh(sphere(0.3), toon(0xa5d6a7), 0.02);
+    chin.scale.set(1.15, 0.45, 0.8); chin.position.set(0, -0.12, 0.08); head.add(chin);
+    // ojos saltones sobre la cabeza, con párpado de "estoy mirando los gráficos"
+    for (const s of [-1, 1]) {
+      const bulb = mesh(sphere(0.15, 16, 12), toon(green), 0.025);
+      bulb.position.set(s * 0.19, 0.2, 0.14); head.add(bulb);
+      const eye = new THREE.Mesh(sphere(0.12, 16, 12), toon(0xffffff));
+      eye.position.set(s * 0.19, 0.21, 0.22); head.add(eye);
+      const pupil = new THREE.Mesh(sphere(0.06, 10, 8), new THREE.MeshBasicMaterial({ color: 0x111111 }));
+      pupil.position.set(s * 0.18, 0.2, 0.32); head.add(pupil);
+      const hl = new THREE.Mesh(sphere(0.018, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      hl.position.set(s * 0.18 + 0.025, 0.23, 0.37); head.add(hl);
+      const lid = mesh(new THREE.SphereGeometry(0.155, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.42), toon(0x388e3c), 0.015);
+      lid.position.set(s * 0.19, 0.2, 0.14); lid.rotation.x = 0.5; head.add(lid);
+    }
+    // boca ancha con sonrisa confiada
+    const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.018, 6, 24, Math.PI * 0.8), toon(0x1b5e20));
+    mouth.rotation.z = Math.PI * 1.1; mouth.position.set(0, -0.02, 0.3); mouth.scale.set(1, 0.45, 1); head.add(mouth);
+    // auriculares con micrófono
+    const band = mesh(new THREE.TorusGeometry(0.4, 0.03, 8, 24, Math.PI), toon(0x212121), 0.015);
+    band.position.set(0, 0.05, 0); head.add(band);
+    for (const s of [-1, 1]) {
+      const cup = mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.08, 16).rotateZ(Math.PI / 2), toon(0x212121), 0.015);
+      cup.position.set(s * 0.42, 0.03, 0); head.add(cup);
+    }
+    const mic = mesh(capsule(0.015, 0.25).rotateZ(Math.PI / 2), toon(0x212121), 0.01);
+    mic.position.set(-0.3, -0.12, 0.22); mic.rotation.y = 0.9; head.add(mic);
+    const micTip = new THREE.Mesh(sphere(0.035, 8, 8), toon(0x424242)); micTip.position.set(-0.17, -0.12, 0.33); head.add(micTip);
+    // chaleco de operador con el gráfico verde
+    const vest = mesh(capsule(0.27, 0.2), toon(0x1565c0), 0.02);
+    vest.scale.set(1.08, 0.95, 0.84); vest.position.y = 0.28; torso.add(vest);
+    const chart = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.22), new THREE.MeshBasicMaterial({ map: chartTex, transparent: true }));
+    chart.position.set(0, 0.3, 0.235); torso.add(chart);
+    chest.visible = true;
+    return r;
+  },
+
+  bull() {
+    // Toro alcista de Wall Street: cuernos, aro de oro, traje negro y cadena con $
+    const brown = 0x8d5524;
+    const r = buildRig({ skin: brown, shirt: 0x212121, sleeve: 0x212121, pants: 0x212121, shoes: 0x111111, sole: 0xffc531, ears: false, headScale: [1.1, 0.95, 1.05] });
+    const { head, torso, chest } = r;
+    chest.scale.set(1.25, 1.05, 0.95); // musculoso
+    // hocico rosado, fosas nasales y aro de oro
+    const snout = mesh(sphere(0.2), toon(0xe0a383), 0.02);
+    snout.scale.set(1.1, 0.75, 0.75); snout.position.set(0, -0.12, 0.26); head.add(snout);
+    for (const s of [-1, 1]) {
+      const n = new THREE.Mesh(sphere(0.03, 8, 6), new THREE.MeshBasicMaterial({ color: 0x3e2723 }));
+      n.position.set(s * 0.07, -0.1, 0.41); head.add(n);
+    }
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.016, 8, 20), toon(0xffc531, { emissive: 0x553300 }));
+    ring.position.set(0, -0.2, 0.42); head.add(ring);
+    // cuernos curvos
+    for (const s of [-1, 1]) {
+      const horn = mesh(new THREE.TorusGeometry(0.2, 0.05, 8, 16, Math.PI * 0.55), toon(0xfff3e0), 0.015);
+      horn.position.set(s * 0.32, 0.12, 0); horn.rotation.y = s > 0 ? 0 : Math.PI; // girar en vez de espejar
+      head.add(horn);
+      const ear = mesh(sphere(0.08), toon(brown), 0.02);
+      ear.scale.set(1.4, 0.6, 0.6); ear.position.set(s * 0.4, 0.0, -0.02); head.add(ear);
+    }
+    // anteojos de sol
+    const shades = mesh(new THREE.BoxGeometry(0.46, 0.1, 0.04), new THREE.MeshBasicMaterial({ color: 0x111111 }), 0);
+    shades.position.set(0, 0.08, 0.32); head.add(shades);
+    const glint = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.02, 0.01), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    glint.position.set(0.14, 0.1, 0.345); head.add(glint);
+    // ceja enojada (sobre los anteojos)
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.04, 0.04), toon(0x4e2a10));
+    brow.position.set(0, 0.16, 0.31); head.add(brow);
+    // mechón
+    const tuft = mesh(sphere(0.1), toon(0x5d3a1a), 0.02);
+    tuft.scale.set(1.2, 0.6, 1); tuft.position.set(0, 0.28, 0.08); head.add(tuft);
+    // camisa, cadena de oro y medallón $
+    const shirtV = new THREE.Mesh(new THREE.CircleGeometry(0.14, 3), toon(0x2e7d32));
+    shirtV.position.set(0, 0.47, 0.235); shirtV.rotation.z = -Math.PI / 2; torso.add(shirtV);
+    const chain = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.02, 6, 24, Math.PI), toon(0xffc531, { emissive: 0x553300 }));
+    chain.rotation.z = Math.PI; chain.position.set(0, 0.5, 0.24); torso.add(chain);
+    const medal = new THREE.Mesh(new THREE.CircleGeometry(0.08, 20), new THREE.MeshBasicMaterial({ map: dollarTex }));
+    medal.position.set(0, 0.28, 0.25); torso.add(medal);
+    return r;
+  },
+
+  shiba() {
+    // Perro shiba astronauta: traje blanco, casco de vidrio y mochila espacial
+    const fur = 0xe8913a, cream = 0xfff1dc;
+    const r = buildRig({ skin: fur, headSkin: fur, shirt: 0xf4f4f4, sleeve: 0xf4f4f4, pants: 0xf4f4f4, shoes: 0x9e9e9e, sole: 0xff7043, ears: false, headScale: [1.02, 0.95, 0.98] });
+    const { head, torso } = r;
+    // máscara crema (cachetes y hocico)
+    const mask = mesh(sphere(0.25), toon(cream), 0.02);
+    mask.scale.set(1.25, 0.75, 0.8); mask.position.set(0, -0.12, 0.17); head.add(mask);
+    const snout = mesh(sphere(0.12), toon(cream), 0.02);
+    snout.scale.set(1, 0.75, 1); snout.position.set(0, -0.1, 0.33); head.add(snout);
+    const nose = new THREE.Mesh(sphere(0.045, 10, 8), toon(0x222222)); nose.position.set(0, -0.05, 0.44); head.add(nose);
+    addEyes(head, { look: 'squint', y: 0.06, x: 0.14, z: 0.3, brow: cream, browTilt: 0.25 });
+    addMouth(head, { kind: 'smile', y: -0.2, z: 0.38 });
+    // orejas puntiagudas
+    for (const s of [-1, 1]) {
+      const ear = mesh(new THREE.ConeGeometry(0.11, 0.22, 4), toon(fur), 0.02);
+      ear.position.set(s * 0.22, 0.32, 0); ear.rotation.z = s * -0.35; head.add(ear);
+      const inner = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.13, 4), toon(cream));
+      inner.position.set(s * 0.22, 0.31, 0.04); inner.rotation.z = s * -0.35; head.add(inner);
+    }
+    // casco de vidrio
+    const helmet = new THREE.Mesh(sphere(0.52, 24, 18), new THREE.MeshPhongMaterial({ color: 0xbfe6ff, transparent: true, opacity: 0.22, shininess: 120, depthWrite: false }));
+    helmet.position.y = 0.03; head.add(helmet);
+    const collar = mesh(new THREE.TorusGeometry(0.33, 0.06, 10, 24).rotateX(Math.PI / 2), toon(0xbdbdbd), 0.02);
+    collar.position.y = -0.36; head.add(collar);
+    // parches del traje y mochila
+    const patch = new THREE.Mesh(new THREE.CircleGeometry(0.08, 20), new THREE.MeshBasicMaterial({ map: rocketTex, transparent: true }));
+    patch.position.set(0.1, 0.38, 0.215); torso.add(patch);
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.08), new THREE.MeshBasicMaterial({ color: 0xff7043 }));
+    flag.position.set(-0.12, 0.4, 0.215); torso.add(flag);
+    const pack = mesh(new THREE.BoxGeometry(0.42, 0.45, 0.2), toon(0xe0e0e0), 0.02);
+    pack.position.set(0, 0.32, -0.27); torso.add(pack);
+    for (const s of [-1, 1]) {
+      const tank = mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.36, 12), toon(0xff7043), 0.015);
+      tank.position.set(s * 0.12, 0.32, -0.4); torso.add(tank);
+    }
+    // colita enrulada
+    const tail = mesh(new THREE.TorusGeometry(0.1, 0.045, 8, 16, Math.PI * 1.5), toon(fur), 0.015);
+    tail.position.set(0, 0.1, -0.3); tail.rotation.y = Math.PI / 2; r.hips.add(tail);
+    return r;
+  },
+
   satoshi() {
     const r = buildRig({ skin: 0x111118, shirt: 0x2b2f3a, sleeve: 0x2b2f3a, pants: 0x22252e, shoes: 0x111111, ears: false });
     const { head, torso } = r;
@@ -290,6 +416,16 @@ export const coinFaceTex = canvasTex(128, 128, (g, w) => {
   g.fillStyle = '#9a5c00'; g.font = '900 70px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText('C', w / 2 + 2, w / 2 + 4);
   g.fillRect(w / 2 - 5, 24, 6, 18); g.fillRect(w / 2 - 5, w - 42, 6, 18);
+});
+const chartTex = canvasTex(128, 96, (g, w, h) => {
+  g.fillStyle = '#0d1b2a'; g.beginPath(); g.roundRect(0, 0, w, h, 10); g.fill();
+  g.strokeStyle = '#3fff8b'; g.lineWidth = 7; g.lineJoin = 'round'; g.beginPath();
+  [[12, 78], [34, 62], [52, 70], [74, 40], [92, 48], [116, 16]].forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+  g.stroke();
+});
+const dollarTex = canvasTex(128, 128, (g, w) => {
+  g.fillStyle = '#ffc531'; g.beginPath(); g.arc(w / 2, w / 2, w / 2 - 2, 0, 7); g.fill();
+  g.fillStyle = '#8a5a00'; g.font = '900 84px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('$', w / 2, w / 2 + 5);
 });
 const rocketTex = canvasTex(128, 128, (g) => {
   g.font = '90px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';

@@ -30,7 +30,7 @@ export const config = {
     coinsPerUsd: num('COINS_PER_USD', 20000),
     minWithdrawCoins: num('MIN_WITHDRAW_COINS', 40000), // = 2 USD con la tasa por defecto
     maxWithdrawalsPerDay: num('MAX_WITHDRAWALS_PER_DAY', 1),
-    dailyCoinCap: num('DAILY_COIN_CAP', 6000), // tope de monedas ganadas por usuario por día
+    dailyCoinCap: num('DAILY_COIN_CAP', 0), // tope de monedas ganadas por día (0 = sin límite)
     maxAdsPerDay: num('MAX_ADS_PER_DAY', 40),
     currencies: ['USDT_TON', 'TON'],
   },

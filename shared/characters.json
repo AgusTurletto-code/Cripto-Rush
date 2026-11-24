@@ -1,0 +1,10 @@
+{
+  "_info": "Catálogo de personajes. Para agregar uno: sumá una entrada acá y su modelo en client/src/game/characters.js (BUILDERS). multiplier multiplica las monedas de cada partida.",
+  "hank":    { "name": "Hodl Hank",         "desc": "Compró en el pico de 2021. Manos de diamante.",    "price": 0,      "multiplier": 1.0 },
+  "muskrat": { "name": "Elon Muskrat",      "desc": "Tuitea a las 3 AM. Mueve mercados.",               "price": 15000,  "multiplier": 1.2 },
+  "thump":   { "name": "Donald Thump",      "desc": "Aranceles a la Luna. Los mejores aranceles.",      "price": 15000,  "multiplier": 1.2 },
+  "pepe":    { "name": "Pepe Trader",       "desc": "Opera con 100x de apalancamiento. Nunca duerme.",  "price": 25000,  "multiplier": 1.3 },
+  "bull":    { "name": "Bruno Bull",        "desc": "El toro de Wall Street. Solo conoce el verde.",    "price": 40000,  "multiplier": 1.5 },
+  "shiba":   { "name": "Captain Shiba",     "desc": "Primer perro en llegar a la Luna. Much wow.",      "price": 60000,  "multiplier": 1.75 },
+  "satoshi": { "name": "Satoshi Nakamochi", "desc": "Nadie sabe quién es. Ni él.",                      "price": 100000, "multiplier": 2.0 }
+}

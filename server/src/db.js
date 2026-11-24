@@ -70,6 +70,11 @@ CREATE TABLE IF NOT EXISTS withdrawals (
 );
 `);
 
+// Migraciones simples: columnas agregadas después de la primera versión
+const runCols = db.prepare('PRAGMA table_info(runs)').all().map((c) => c.name);
+if (!runCols.includes('character')) db.exec(`ALTER TABLE runs ADD COLUMN character TEXT NOT NULL DEFAULT 'hank'`);
+if (!runCols.includes('multiplier')) db.exec('ALTER TABLE runs ADD COLUMN multiplier REAL NOT NULL DEFAULT 1');
+
 /** Ejecuta fn dentro de una transacción. */
 export function tx(fn) {
   db.exec('BEGIN IMMEDIATE');

@@ -1,10 +1,12 @@
 // API simulada para la versión demo (VITE_DEMO=1): todo se guarda en el navegador.
 // No sirve para producción: el jugador podría editar su saldo.
-const KEY = 'cryptorush-demo';
+import { CHARACTERS } from '../game/characters.js';
+
+const KEY = 'cryptorush-demo-v3';
 const CFG = {
-  coinsPerUsd: 20000, minWithdrawCoins: 40000, dailyCoinCap: 6000, devMode: true,
+  coinsPerUsd: 20000, minWithdrawCoins: 40000, dailyCoinCap: 0, devMode: true,
   currencies: ['USDT_TON', 'TON'],
-  characters: { hank: { price: 0 }, muskrat: { price: 15000 }, thump: { price: 15000 }, satoshi: { price: 30000 } },
+  characters: CHARACTERS,
 };
 
 function load() {
@@ -12,7 +14,7 @@ function load() {
   try { s = JSON.parse(localStorage.getItem(KEY)); } catch { /* sin storage */ }
   return s || {
     // saldo inicial para poder probar la tienda y el retiro
-    user: { id: 'demo', name: 'Demo', balance: 45000, totalEarned: 0, bestDistance: 0, wallet: null, character: 'hank', owned: ['hank'], earnedToday: 0 },
+    user: { id: 'demo', name: 'Demo', balance: 150000, totalEarned: 0, bestDistance: 0, wallet: null, character: 'hank', owned: ['hank'], earnedToday: 0 },
     withdrawals: [],
   };
 }
@@ -26,7 +28,11 @@ export const demoApi = {
   login: () => wait(state.user),
   config: () => wait(CFG),
   me: () => wait(state.user),
-  startRun() { run = { runId: 'demo-' + Date.now(), seed: (Math.random() * 2 ** 31) | 0, doubled: false, revived: false }; return wait(run); },
+  startRun() {
+    run = { runId: 'demo-' + Date.now(), seed: (Math.random() * 2 ** 31) | 0, doubled: false, revived: false,
+      multiplier: CHARACTERS[state.user.character]?.multiplier ?? 1 };
+    return wait(run);
+  },
   claimAd(_id, type) {
     if (type === 'double') { if (run.doubled) fail('already_doubled'); run.doubled = true; }
     else { if (run.revived) fail('already_revived'); run.revived = true; }
@@ -34,12 +40,11 @@ export const demoApi = {
   },
   endRun(_id, coins, distance) {
     const u = state.user;
-    const gross = run.doubled ? coins * 2 : coins;
-    const credited = Math.max(0, Math.min(gross, CFG.dailyCoinCap - u.earnedToday));
+    const credited = Math.floor(coins * run.multiplier) * (run.doubled ? 2 : 1);
     u.balance += credited; u.totalEarned += credited; u.earnedToday += credited;
     u.bestDistance = Math.max(u.bestDistance, distance);
     save();
-    return wait({ credited, capped: credited < gross, doubled: run.doubled, user: u });
+    return wait({ credited, capped: false, doubled: run.doubled, multiplier: run.multiplier, user: u });
   },
   buyCharacter(id) {
     const u = state.user;

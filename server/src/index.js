@@ -156,7 +156,7 @@ function getActiveRun(userId, runId) {
  * El cliente llama acá después de que el anuncio de Monetag terminó.
  * type = 'revive' (máx 1 por partida) | 'double' (máx 1 por partida)
  */
-api.post('/ads/claim', wrap((req) => {
+function claimAd(req) {
   const { runId, type, ymid } = req.body || {};
   if (!['revive', 'double'].includes(type)) throw new ApiError(400, 'bad_type');
   const run = getActiveRun(req.user.id, runId);
@@ -185,7 +185,27 @@ api.post('/ads/claim', wrap((req) => {
     else db.prepare('UPDATE runs SET doubled = 1 WHERE id = ?').run(run.id);
   });
   return { ok: true };
-}));
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+api.post('/ads/claim', async (req, res) => {
+  // Monetag avisa (postback) casi al mismo tiempo que el juego reclama: esperamos el aviso
+  // y respondemos apenas llega, en lugar de que el juego reintente cada 1,5 s.
+  const deadline = now() + 8000;
+  for (;;) {
+    try {
+      return res.json(claimAd(req));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 402 && e.code === 'ad_not_verified' && now() < deadline) {
+        await sleep(150);
+        continue;
+      }
+      if (e instanceof ApiError) return res.status(e.status).json({ error: e.code });
+      console.error(e);
+      return res.status(500).json({ error: 'server_error' });
+    }
+  }
+});
 
 api.post('/run/end', wrap((req) => {
   const { runId } = req.body || {};

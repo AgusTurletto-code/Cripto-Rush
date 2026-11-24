@@ -124,6 +124,13 @@ input, select { width: 100%; padding: 12px; border-radius: 10px; border: 1px sol
 /* ---------- Varios ---------- */
 #toast { position: fixed; left: 50%; bottom: calc(30px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 50; pointer-events: none; }
 #toast div { background: #000c; padding: 10px 16px; border-radius: 12px; font-weight: 600; animation: pop .2s; max-width: 90vw; text-align: center; }
+.verifying { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background: rgba(5, 8, 20, .82); backdrop-filter: blur(4px); text-align: center; padding: 16px; }
+.verifying b { font-size: 20px; }
+.verifying small { color: var(--muted); }
+.spinner { width: 54px; height: 54px; border-radius: 50%; border: 6px solid rgba(255,255,255,.15); border-top-color: var(--gold); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
 .fake-ad { position: fixed; inset: 0; z-index: 100; background: #000; display: grid; place-items: center; text-align: center; }
 .fake-ad b { font-size: 48px; color: var(--gold); }
 .loading { position: absolute; inset: 0; display: grid; place-items: center; font-size: 20px; font-weight: 800; background: var(--bg); }

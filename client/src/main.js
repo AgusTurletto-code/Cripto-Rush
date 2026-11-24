@@ -148,19 +148,36 @@ const AD_ERRORS = {
 const adErrMsg = (e) => (AD_ERRORS[e?.message] || errMsg(e)) + (e?.detail ? ` (${e.detail})` : '');
 
 /** Muestra un anuncio y lo reclama en el servidor (con reintentos mientras llega el postback). */
+/**
+ * Aviso de "Confirmando el anuncio…". Se muestra ANTES del anuncio (queda detrás): así, al cerrarlo,
+ * el jugador ve que el juego está trabajando mientras Monetag confirma, en vez de una pantalla quieta.
+ */
+function showVerifying(type) {
+  hideVerifying();
+  document.body.insertAdjacentHTML('beforeend', `<div class="verifying" id="verifying">
+    <div class="spinner"></div><b>Confirmando el anuncio…</b>
+    <small>${type === 'revive' ? 'En un momento sigues corriendo' : 'En un momento se duplican tus monedas'}</small></div>`);
+}
+function hideVerifying() { document.getElementById('verifying')?.remove(); }
+
 async function watchAd(type) {
   const ymid = adYmid(type);
+  showVerifying(type);
   try {
-    await showRewardedAd(ymid, type);
-  } catch (e) {
-    api.reportAdError(type, e.message, e.detail); // queda en el diagnóstico del panel /admin
-    throw e;
-  }
-  for (let i = 0; ; i++) {
-    try { return await api.claimAd(run.runId, type, ymid); } catch (e) {
-      if (e.message !== 'ad_not_verified' || i >= 4) { api.reportAdError(type, e.message, 'el servidor no recibió el postback de Monetag'); throw e; }
-      await new Promise((r) => setTimeout(r, 1500));
+    try {
+      await showRewardedAd(ymid, type);
+    } catch (e) {
+      api.reportAdError(type, e.message, e.detail); // queda en el diagnóstico del panel /admin
+      throw e;
     }
+    // el servidor espera el aviso de Monetag (hasta ~8 s) y responde apenas llega
+    for (let i = 0; ; i++) {
+      try { return await api.claimAd(run.runId, type, ymid); } catch (e) {
+        if (e.message !== 'ad_not_verified' || i >= 1) { api.reportAdError(type, e.message, 'el servidor no recibió el postback de Monetag'); throw e; }
+      }
+    }
+  } finally {
+    hideVerifying();
   }
 }
 
@@ -186,6 +203,7 @@ function showRevive() {
       run.revived = true;
       closeModal();
       haptic('success');
+      toast('🚀 ¡Sigue corriendo!', 1200);
       game.revive();
     } catch (e) {
       toast(adErrMsg(e), 3500);

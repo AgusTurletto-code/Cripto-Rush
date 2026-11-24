@@ -97,6 +97,9 @@ addUserCol('ref_earnings', 'INTEGER NOT NULL DEFAULT 0');
 addUserCol('wallet_key', 'TEXT');          // wallet normalizada (para detectar la misma wallet en 2 cuentas)
 db.exec('CREATE INDEX IF NOT EXISTS idx_users_ref ON users(referred_by)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_users_wallet ON users(wallet_key)');
+const runCols2 = db.prepare('PRAGMA table_info(runs)').all().map((c) => c.name);
+// x2 sin confirmar todavía: la mitad extra se paga cuando llega el postback de Monetag
+if (!runCols2.includes('pending_bonus')) db.exec('ALTER TABLE runs ADD COLUMN pending_bonus INTEGER NOT NULL DEFAULT 0');
 const pbCols = db.prepare('PRAGMA table_info(ad_postbacks)').all().map((c) => c.name);
 if (!pbCols.includes('telegram_id')) db.exec(`ALTER TABLE ad_postbacks ADD COLUMN telegram_id TEXT NOT NULL DEFAULT ''`);
 if (!pbCols.includes('revenue')) db.exec('ALTER TABLE ad_postbacks ADD COLUMN revenue REAL NOT NULL DEFAULT 0');

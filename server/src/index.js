@@ -30,6 +30,37 @@ const wrap = (fn) => (req, res) => {
   }
 };
 
+/** Explica en qué difieren dos secretos, sin mostrarlos (para el panel admin). */
+function secretHint(got, want) {
+  if (!got) return 'la URL de Monetag no trae secret= (¿falta en el Postback URL?)';
+  if (got === 'TU_SECRETO') return 'en Monetag quedó escrito TU_SECRETO: reemplazalo por tu contraseña';
+  if (got.startsWith('{') || got.includes('}')) return 'el secreto de Monetag tiene llaves { }: va sin llaves';
+  if (got.toLowerCase() === want.toLowerCase()) return 'solo difieren mayúsculas/minúsculas';
+  if (got.length !== want.length) return `Monetag manda ${got.length} caracteres y Railway tiene ${want.length}`;
+  let diff = 0; for (let i = 0; i < got.length; i++) if (got[i] !== want[i]) diff++;
+  return `mismo largo (${got.length}) pero ${diff} carácter(es) distintos`;
+}
+
+/**
+ * Llegó la confirmación de Monetag para un anuncio que el juego ya aceptó "pendiente":
+ * marca el anuncio como verificado y, si era un x2 de una partida ya cobrada, paga la mitad que faltaba.
+ */
+function settlePendingAd(ymid, telegramId) {
+  const m = ymid.match(/^(.+)_(revive|double)$/);
+  if (!m) return;
+  const [, runId, type] = m;
+  const run = db.prepare('SELECT * FROM runs WHERE id = ?').get(runId);
+  if (!run || (telegramId && telegramId !== run.user_id)) return;
+  db.prepare('UPDATE ad_events SET verified = 1 WHERE run_id = ? AND type = ?').run(runId, type);
+  if (type === 'double' && run.status === 'finished' && run.pending_bonus > 0) {
+    const bonus = run.pending_bonus;
+    db.prepare('UPDATE runs SET pending_bonus = 0, credited = credited + ? WHERE id = ?').run(bonus, runId);
+    db.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ?').run(bonus, bonus, run.user_id);
+    payReferral(run.user_id, bonus);
+    console.log(`[ads] x2 confirmado tarde: +${bonus} a ${run.user_id}`);
+  }
+}
+
 // ---------- Diagnóstico de anuncios (en memoria, últimos 30 eventos) ----------
 const adLog = [];
 function logAd(entry) {
@@ -177,8 +208,9 @@ app.post('/api/auth', wrap((req) => {
 // https://TU-DOMINIO/api/ads/postback?secret=TU_SECRETO&ymid={ymid}&event_type={event_type}&reward_event_type={reward_event_type}&telegram_id={telegram_id}&estimated_price={estimated_price}
 app.get('/api/ads/postback', wrap((req) => {
   // sin secreto configurado el endpoint queda apagado: cualquiera podría falsificar anuncios vistos
-  if (!config.adPostbackSecret || req.query.secret !== config.adPostbackSecret) {
-    logAd({ kind: 'postback', result: config.adPostbackSecret ? 'secreto incorrecto' : 'AD_POSTBACK_SECRET no está configurado',
+  const got = String(req.query.secret ?? '').trim();
+  if (!config.adPostbackSecret || got !== config.adPostbackSecret) {
+    logAd({ kind: 'postback', result: config.adPostbackSecret ? 'secreto incorrecto: ' + secretHint(got, config.adPostbackSecret) : 'AD_POSTBACK_SECRET no está configurado',
       ymid: String(req.query.ymid || ''), reward: String(req.query.reward_event_type || '') });
     throw new ApiError(403, 'bad_secret');
   }
@@ -189,9 +221,12 @@ app.get('/api/ads/postback', wrap((req) => {
   logAd({ kind: 'postback', result: 'ok', ymid, reward: String(req.query.reward_event_type || ''),
     event: String(req.query.event_type || ''), price });
   if (ymid && valued) {
-    db.prepare(`INSERT INTO ad_postbacks (ymid, created_at, telegram_id, revenue) VALUES (?, ?, ?, ?)
-                ON CONFLICT(ymid) DO UPDATE SET revenue = revenue + excluded.revenue`)
-      .run(ymid, now(), String(req.query.telegram_id || ''), price);
+    tx(() => {
+      db.prepare(`INSERT INTO ad_postbacks (ymid, created_at, telegram_id, revenue) VALUES (?, ?, ?, ?)
+                  ON CONFLICT(ymid) DO UPDATE SET revenue = revenue + excluded.revenue`)
+        .run(ymid, now(), String(req.query.telegram_id || ''), price);
+      settlePendingAd(ymid, String(req.query.telegram_id || ''));
+    });
   }
   return { ok: true };
 }));
@@ -233,7 +268,7 @@ function getActiveRun(userId, runId) {
  * El cliente llama acá después de que el anuncio de Monetag terminó.
  * type = 'revive' (máx 1 por partida) | 'double' (máx 1 por partida)
  */
-function claimAd(req) {
+function claimAd(req, allowPending = false) {
   const { runId, type, ymid } = req.body || {};
   if (!['revive', 'double'].includes(type)) throw new ApiError(400, 'bad_type');
   const run = getActiveRun(req.user.id, runId);
@@ -248,10 +283,14 @@ function claimAd(req) {
   let verified = 0;
   if (config.adVerifyMode === 'postback') {
     const expected = `${run.id}_${type}`;
-    const pb = ymid === expected && db.prepare('SELECT telegram_id FROM ad_postbacks WHERE ymid = ?').get(expected);
-    if (!pb) throw new ApiError(402, 'ad_not_verified');
+    if (ymid !== expected) throw new ApiError(400, 'ad_not_verified');
+    const pb = db.prepare('SELECT telegram_id FROM ad_postbacks WHERE ymid = ?').get(expected);
     // el anuncio lo tiene que haber visto este mismo usuario de Telegram
-    if (pb.telegram_id && pb.telegram_id !== req.user.id) throw new ApiError(403, 'ad_not_verified');
+    if (pb?.telegram_id && pb.telegram_id !== req.user.id) throw new ApiError(403, 'ad_not_verified');
+    if (pb) verified = 1;
+    else if (!allowPending) throw new ApiError(402, 'ad_not_verified');
+    // si no llegó todavía, se acepta como pendiente: el revivir sigue y el x2 paga la mitad extra al confirmarse
+  } else {
     verified = 1;
   }
 
@@ -261,17 +300,16 @@ function claimAd(req) {
     if (type === 'revive') db.prepare('UPDATE runs SET revives = revives + 1 WHERE id = ?').run(run.id);
     else db.prepare('UPDATE runs SET doubled = 1 WHERE id = ?').run(run.id);
   });
-  return { ok: true };
+  return { ok: true, pending: !verified };
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 api.post('/ads/claim', async (req, res) => {
-  // Monetag avisa (postback) casi al mismo tiempo que el juego reclama: esperamos el aviso
-  // y respondemos apenas llega, en lugar de que el juego reintente cada 1,5 s.
-  const deadline = now() + 8000;
+  // Esperamos un poco el aviso de Monetag; si tarda más, se acepta como pendiente (sin hacer esperar al jugador).
+  const deadline = now() + 2500;
   for (;;) {
     try {
-      return res.json(claimAd(req));
+      return res.json(claimAd(req, now() >= deadline));
     } catch (e) {
       if (e instanceof ApiError && e.status === 402 && e.code === 'ad_not_verified' && now() < deadline) {
         await sleep(150);
@@ -303,12 +341,16 @@ api.post('/run/end', wrap((req) => {
     const earnedToday = db.prepare(
       'SELECT COALESCE(SUM(credited),0) AS s FROM runs WHERE user_id = ? AND ended_at >= ?'
     ).get(req.user.id, startOfDay()).s;
-    const gross = creditFor(coins, run.multiplier, run.doubled);
+    // ¿el x2 ya está confirmado por Monetag? (si no, la mitad extra queda pendiente hasta el postback)
+    const doubleOk = run.doubled && (config.adVerifyMode !== 'postback'
+      || !!db.prepare('SELECT 1 FROM ad_postbacks WHERE ymid = ?').get(`${run.id}_double`));
+    const pendingBonus = run.doubled && !doubleOk ? creditFor(coins, run.multiplier, false) : 0;
+    const gross = creditFor(coins, run.multiplier, doubleOk);
     const cap = config.economy.dailyCoinCap;
     const credited = cap > 0 ? Math.max(0, Math.min(gross, cap - earnedToday)) : gross;
 
-    db.prepare(`UPDATE runs SET status='finished', ended_at=?, coins=?, distance=?, credited=? WHERE id=?`)
-      .run(now(), coins, Math.floor(distance), credited, run.id);
+    db.prepare(`UPDATE runs SET status='finished', ended_at=?, coins=?, distance=?, credited=?, pending_bonus=? WHERE id=?`)
+      .run(now(), coins, Math.floor(distance), credited, pendingBonus, run.id);
     db.prepare(`UPDATE users SET balance = balance + ?, total_earned = total_earned + ?,
                 best_distance = MAX(best_distance, ?) WHERE id = ?`)
       .run(credited, credited, Math.floor(distance), req.user.id);
@@ -318,6 +360,7 @@ api.post('/run/end', wrap((req) => {
       credited,
       capped: credited < gross,
       doubled: !!run.doubled,
+      pendingBonus,
       multiplier: run.multiplier,
       user: publicUser(getUser.get(req.user.id)),
     };
@@ -447,9 +490,10 @@ admin.use((req, _res, next) => {
 admin.get('/withdrawals', wrap((req) =>
   db.prepare(`SELECT w.*, u.username, u.first_name, u.total_earned, u.referred_by, u.ref_status, u.created_at AS user_created,
               (SELECT COUNT(*) FROM runs r WHERE r.user_id = w.user_id AND r.status='rejected') AS rejected_runs,
-              (SELECT COALESCE(SUM(credited),0) FROM runs r WHERE r.user_id = w.user_id AND r.status='finished') AS played_coins
+              (SELECT COALESCE(SUM(credited),0) FROM runs r WHERE r.user_id = w.user_id AND r.status='finished') AS played_coins,
+              (SELECT COUNT(*) FROM ad_events e WHERE e.user_id = w.user_id AND e.verified = 0 AND e.created_at < ?) AS unverified_ads
               FROM withdrawals w JOIN users u ON u.id = w.user_id
-              WHERE w.status = ? ORDER BY w.id`).all(req.query.status || 'pending')
+              WHERE w.status = ? ORDER BY w.id`).all(now() - 15 * 60 * 1000, req.query.status || 'pending')
     .map((w) => {
       const l = linkedAccounts(w.user_id);
       return { ...w, linked: { device: l.device.length, ip: l.ip.length, wallet: l.wallet.length } };

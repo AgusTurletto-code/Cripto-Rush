@@ -51,7 +51,7 @@ export const config = {
   // 'postback': además se exige que Monetag haya llamado a /api/ads/postback (más seguro).
   // si hay AD_POSTBACK_SECRET se usa 'postback' por defecto
   adVerifyMode: process.env.AD_VERIFY_MODE || (process.env.AD_POSTBACK_SECRET ? 'postback' : 'client'),
-  adPostbackSecret: process.env.AD_POSTBACK_SECRET || '',
+  adPostbackSecret: (process.env.AD_POSTBACK_SECRET || '').trim(), // sin espacios accidentales
 };
 
 // Reglas físicas del juego compartidas con el cliente (client/src/game/rules.js)

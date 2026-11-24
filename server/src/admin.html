@@ -74,6 +74,7 @@ function signals(w) {
   if (l.wallet) out.push(`<span class="bad">⚠️ ${l.wallet} cuenta(s) con la misma wallet</span>`);
   if (l.ip) out.push(`<span class="warn">ℹ️ ${l.ip} cuenta(s) con la misma IP (puede ser familia o wifi compartido)</span>`);
   if (w.ref_status === 'blocked') out.push('<span class="bad">⚠️ auto-referido bloqueado</span>');
+  if (w.unverified_ads) out.push(`<span class="bad">⚠️ ${w.unverified_ads} anuncio(s) que Monetag nunca confirmó</span>`);
   if (w.rejected_runs) out.push(`<span class="bad">⚠️ ${w.rejected_runs} partida(s) rechazadas por trampa</span>`);
   if (w.played_coins < w.coins * 0.3) out.push(`<span class="warn">ℹ️ ganó jugando solo ${w.played_coins} de ${w.total_earned} monedas</span>`);
   const age = Math.floor((Date.now() - w.user_created) / 864e5);

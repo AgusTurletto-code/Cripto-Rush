@@ -142,6 +142,7 @@ input, select { width: 100%; padding: 12px; border-radius: 10px; border: 1px sol
 .day.done { opacity: .55; }
 .day.today { border-color: var(--gold); background: rgba(255,197,49,.14); box-shadow: 0 0 0 2px rgba(255,197,49,.3); }
 .day.big-day { grid-column: span 2; }
+.modal .pending { color: var(--gold); font-weight: 700; margin-top: -6px; }
 .streak { color: var(--btc); font-weight: 800; margin: 0 0 4px; }
 
 /* ---------- Invitar ---------- */

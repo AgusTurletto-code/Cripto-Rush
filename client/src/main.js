@@ -219,11 +219,10 @@ async function watchAd(type) {
       api.reportAdError(type, e.message, e.detail); // queda en el diagnóstico del panel /admin
       throw e;
     }
-    // el servidor espera el aviso de Monetag (hasta ~8 s) y responde apenas llega
-    for (let i = 0; ; i++) {
-      try { return await api.claimAd(run.runId, type, ymid); } catch (e) {
-        if (e.message !== 'ad_not_verified' || i >= 1) { api.reportAdError(type, e.message, 'el servidor no recibió el postback de Monetag'); throw e; }
-      }
+    // el servidor espera unos segundos el aviso de Monetag; si tarda, lo acepta como pendiente
+    try { return await api.claimAd(run.runId, type, ymid); } catch (e) {
+      api.reportAdError(type, e.message, 'el servidor rechazó el anuncio');
+      throw e;
     }
   } finally {
     hideVerifying();
@@ -289,6 +288,7 @@ function showGameOver() {
       if (r.credited > 0) { haptic('success'); sfx.cash(); }
       modal(`<h2>${esc(t(r.doubled ? 'doubled' : 'collected'))}</h2>
         <div class="big">+${fmt(r.credited)}</div>
+        ${r.pendingBonus ? `<p class="pending">⏳ ${esc(t('pending_bonus', { n: fmt(r.pendingBonus) }))}</p>` : ''}
         <p>${esc(r.capped ? t('capped') : t('balance_line', { b: fmt(user.balance), usd: usd(user.balance) }))}</p>
         <div class="stack"><button class="btn primary" id="again">${esc(t('again'))}</button><button class="btn ghost" id="home">${esc(t('menu'))}</button></div>`);
       on('#again', () => { closeModal(); showHome(); startRun(); });

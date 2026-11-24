@@ -5,7 +5,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "build:demo": "VITE_DEMO=1 vite build --outDir dist-demo"
+    "build:demo": "VITE_DEMO=1 vite build --outDir dist-demo",
+    "logo": "vite build tools/logo --outDir ../../dist-logo --emptyOutDir --base ./ && echo \"Abr\u00ed client/dist-logo/index.html y guard\u00e1 la imagen (clic derecho \u2192 Guardar imagen)\""
   },
   "dependencies": {
     "@tonconnect/ui": "^2.0.9",

@@ -1,0 +1,59 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  :root { --gold1:#fff6c2; --gold2:#ffc531; --gold3:#f07c00; --ink:#160a33; }
+  html, body { margin: 0; overflow: hidden; font-family: 'Inter Display', 'Inter', system-ui, sans-serif; }
+  .wrap { position: relative; overflow: hidden; }
+  .bgshot { position: absolute; inset: 0; background-size: cover; background-position: center 84%; }
+  .shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(18,6,43,.9) 0%, rgba(18,6,43,.25) 38%, rgba(18,6,43,.15) 60%, rgba(18,6,43,.92) 100%); }
+  .purple { position: absolute; inset: 0; background: radial-gradient(120% 90% at 70% 40%, #6a1b9a 0%, #2a0e55 50%, #12062b 100%); }
+  .rays { position: absolute; inset: -40%; background: repeating-conic-gradient(from 0deg at 70% 45%, rgba(255,255,255,.06) 0 8deg, transparent 8deg 20deg); }
+  .moon { position: absolute; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #fff4c9, #ffd77a 60%, #e7a83a); box-shadow: 0 0 120px 30px rgba(255,200,90,.45); }
+  .title { font-weight: 900; line-height: .9; letter-spacing: -2px;
+    background: linear-gradient(180deg, var(--gold1) 15%, var(--gold2) 55%, var(--gold3)); -webkit-background-clip: text; background-clip: text; color: transparent;
+    -webkit-text-stroke: 3px var(--ink); filter: drop-shadow(0 7px 0 #5a2a00) drop-shadow(0 10px 20px rgba(0,0,0,.5)); }
+  .pill { display: inline-block; background: rgba(10,8,30,.82); color: #fff; font-weight: 900; border-radius: 18px; border: 3px solid rgba(255,197,49,.85); }
+  .pill em { font-style: normal; color: var(--gold2); }
+  .btn { display: inline-block; background: linear-gradient(180deg, #ffd65a, #f7931a); color: #2b1600; font-weight: 900; border-radius: 18px; box-shadow: 0 6px 0 #8a4b00, 0 14px 26px rgba(0,0,0,.45); }
+  .tg { display: inline-flex; align-items: center; background: #2aabee; color: #fff; font-weight: 900; border-radius: 999px; }
+  .fine { color: rgba(255,255,255,.65); font-weight: 600; }
+  .earn em { font-style: normal; color: var(--gold2); }
+  img.ch { position: absolute; filter: drop-shadow(0 12px 16px rgba(0,0,0,.5)); }
+</style></head>
+<body><div id="root"></div>
+<script>
+const q = new URLSearchParams(location.search);
+const lang = q.get('lang') || 'es';
+const T = {
+  es: { tag: '¿Puedes esquivar el <em>mercado bajista</em>? 📉', earn: 'Junta monedas 🪙 y <em>canjéalas por cripto</em>', play: '▶ JUEGA GRATIS', tg: '✈ En Telegram', fine: '+18 · Monedas canjeables según los términos del juego', bullets: ['🏃 Corre y esquiva', '🎡 Ruleta diaria', '👥 Gana con tus amigos'] },
+  en: { tag: 'Can you dodge the <em>bear market</em>? 📉', earn: 'Collect coins 🪙 and <em>cash out in crypto</em>', play: '▶ PLAY FREE', tg: '✈ On Telegram', fine: '18+ · Coins redeemable under the game terms', bullets: ['🏃 Run and dodge', '🎡 Daily wheel', '👥 Earn with friends'] },
+}[lang];
+const id = q.get('id');
+const root = document.getElementById('root');
+if (id === 'square') {
+  document.body.style.width = '540px'; document.body.style.height = '540px';
+  root.innerHTML = `<div class="wrap" style="width:540px;height:540px">
+    <div class="bgshot" style="background-image:url(${q.get('shot')})"></div><div class="shade"></div>
+    <div class="title" style="position:absolute;top:24px;width:100%;text-align:center;font-size:72px">CRYPTO RUSH</div>
+    <div style="position:absolute;top:118px;width:100%;text-align:center"><span class="pill" style="font-size:24px;padding:10px 16px">${T.tag}</span></div>
+    <div style="position:absolute;bottom:40px;width:100%;text-align:center"><span class="btn" style="font-size:25px;padding:11px 22px">${T.play}</span>
+      <div style="margin-top:9px"><span class="tg" style="font-size:17px;padding:6px 14px">${T.tg}</span></div></div>
+    <div class="fine" style="position:absolute;bottom:16px;width:100%;text-align:center;font-size:11px">${T.fine}</div></div>`;
+} else {
+  // horizontal 16:9 para canales/grupos
+  document.body.style.width = '640px'; document.body.style.height = '360px';
+  root.innerHTML = `<div class="wrap" style="width:640px;height:360px">
+    <div class="purple"></div><div class="rays"></div><div class="moon" style="width:250px;height:250px;left:360px;top:40px"></div>
+    <img class="ch" src="char-bull.png" style="width:210px;left:330px;bottom:-8px">
+    <img class="ch" src="char-shiba.png" style="width:170px;left:478px;bottom:2px">
+    <img class="ch" src="char-hank.png" style="width:230px;left:400px;bottom:-16px">
+    <div style="position:absolute;left:30px;top:28px;width:330px">
+      <div class="title" style="font-size:54px">CRYPTO<br>RUSH</div>
+      <div class="earn" style="margin-top:10px;color:#fff;font-weight:900;font-size:19px;line-height:1.2">${T.earn}</div>
+      <div style="margin-top:8px;color:#fff;font-weight:700;font-size:14px;line-height:1.5">${T.bullets.join('<br>')}</div>
+      <div style="margin-top:14px;display:flex;gap:10px;align-items:center"><span class="btn" style="font-size:18px;padding:9px 16px;white-space:nowrap">${T.play}</span><span class="tg" style="font-size:14px;padding:6px 12px;white-space:nowrap">${T.tg}</span></div>
+    </div>
+    <div class="fine" style="position:absolute;bottom:8px;left:30px;font-size:9px">${T.fine}</div></div>`;
+}
+window.__ready = Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
+</script></body></html>

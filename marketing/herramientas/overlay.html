@@ -1,0 +1,72 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  :root { --gold1:#fff6c2; --gold2:#ffc531; --gold3:#f07c00; --ink:#160a33; }
+  html, body { margin: 0; width: 540px; height: 960px; overflow: hidden; background: transparent; font-family: 'Inter Display', 'Inter', system-ui, sans-serif; }
+  .safe { position: absolute; left: 28px; right: 28px; }
+  .cap { top: 120px; text-align: center; }
+  .cap span { display: inline-block; background: rgba(10,8,30,.82); color: #fff; font-weight: 900; font-size: 40px; line-height: 1.12;
+    padding: 14px 22px; border-radius: 22px; box-shadow: 0 8px 30px rgba(0,0,0,.45); border: 3px solid rgba(255,197,49,.85); letter-spacing: -.5px; }
+  .cap em { font-style: normal; color: var(--gold2); }
+  .big { top: 300px; text-align: center; font-weight: 900; font-size: 92px; line-height: .95; letter-spacing: -2px;
+    background: linear-gradient(180deg, var(--gold1) 15%, var(--gold2) 55%, var(--gold3)); -webkit-background-clip: text; background-clip: text; color: transparent;
+    -webkit-text-stroke: 3px var(--ink); filter: drop-shadow(0 8px 0 #5a2a00) drop-shadow(0 12px 24px rgba(0,0,0,.6)); transform: rotate(-4deg); }
+
+  /* pantalla final */
+  .end { position: absolute; inset: 0; background: radial-gradient(120% 70% at 50% 30%, #6a1b9a 0%, #2a0e55 45%, #12062b 100%); }
+  .end .rays { position: absolute; inset: -40%; background: repeating-conic-gradient(from 0deg at 50% 38%, rgba(255,255,255,.06) 0 8deg, transparent 8deg 20deg); }
+  .end .moon { position: absolute; width: 360px; height: 360px; border-radius: 50%; left: 90px; top: 150px; background: radial-gradient(circle at 40% 35%, #fff4c9, #ffd77a 60%, #e7a83a); box-shadow: 0 0 120px 30px rgba(255,200,90,.45); }
+  .end .title { position: absolute; top: 64px; width: 100%; text-align: center; font-weight: 900; font-size: 96px; line-height: .9; letter-spacing: -2px;
+    background: linear-gradient(180deg, var(--gold1) 15%, var(--gold2) 55%, var(--gold3)); -webkit-background-clip: text; background-clip: text; color: transparent;
+    -webkit-text-stroke: 3px var(--ink); filter: drop-shadow(0 8px 0 #5a2a00); }
+  .end .chars { position: absolute; top: 300px; left: 0; right: 0; height: 330px; }
+  .end .chars img { position: absolute; width: 300px; height: 300px; bottom: 0; filter: drop-shadow(0 14px 18px rgba(0,0,0,.5)); }
+  .end .cta { position: absolute; top: 650px; width: 100%; text-align: center; }
+  .end .btn { display: inline-block; background: linear-gradient(180deg, #ffd65a, #f7931a); color: #2b1600; font-weight: 900; font-size: 38px;
+    padding: 18px 34px; border-radius: 22px; box-shadow: 0 7px 0 #8a4b00, 0 16px 30px rgba(0,0,0,.45); }
+  .end .sub { margin-top: 26px; color: #fff; font-weight: 800; font-size: 30px; }
+  .end .tg { display: inline-flex; align-items: center; gap: 10px; margin-top: 14px; background: #2aabee; color: #fff; font-weight: 900; font-size: 28px; padding: 10px 22px; border-radius: 999px; }
+  .end .fine { position: absolute; bottom: 34px; width: 100%; text-align: center; color: rgba(255,255,255,.6); font-size: 15px; font-weight: 600; }
+</style></head>
+<body><div id="root"></div>
+<script>
+const q = new URLSearchParams(location.search);
+const lang = q.get('lang') || 'es';
+const T = {
+  es: {
+    intro: '¿Puedes esquivar el <em>mercado bajista</em>? 📉',
+    coins: 'Junta monedas 🪙<br>y <em>canjéalas por cripto</em>',
+    rocket: 'TO THE<br>MOON 🚀',
+    wheel: 'Gira la <em>ruleta</em> 🎡<br>todos los días',
+    play: '▶ JUEGA GRATIS', sub: 'Dentro de Telegram, sin descargar nada', tg: '✈ Link en la bio',
+    fine: '+18 · Monedas canjeables según los términos del juego',
+  },
+  en: {
+    intro: 'Can you dodge the <em>bear market</em>? 📉',
+    coins: 'Collect coins 🪙<br>and <em>cash out in crypto</em>',
+    rocket: 'TO THE<br>MOON 🚀',
+    wheel: 'Spin the <em>wheel</em> 🎡<br>every day',
+    play: '▶ PLAY FREE', sub: 'Right inside Telegram, no download', tg: '✈ Link in bio',
+    fine: '18+ · Coins redeemable under the game terms',
+  },
+}[lang];
+const id = q.get('id');
+const root = document.getElementById('root');
+if (id === 'end') {
+  root.innerHTML = `<div class="end"><div class="rays"></div><div class="moon"></div>
+    <div class="title">CRYPTO<br>RUSH</div>
+    <div class="chars">
+      <img src="char-satoshi.png" style="left:-36px;transform:scale(.82);transform-origin:bottom">
+      <img src="char-shiba.png" style="right:-36px;transform:scale(.82);transform-origin:bottom">
+      <img src="char-bull.png" style="left:60px;bottom:-6px">
+      <img src="char-hank.png" style="right:50px;bottom:-14px;width:330px;height:330px">
+    </div>
+    <div class="cta"><div class="btn">${T.play}</div><div class="sub">${T.sub}</div><div class="tg">${T.tg}</div></div>
+    <div class="fine">${T.fine}</div></div>`;
+} else if (id === 'rocket') {
+  root.innerHTML = `<div class="safe big">${T.rocket}</div>`;
+} else {
+  root.innerHTML = `<div class="safe cap"><span>${T[id]}</span></div>`;
+}
+window.__ready = Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
+</script></body></html>

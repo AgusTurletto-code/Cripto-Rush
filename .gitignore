@@ -6,3 +6,5 @@ server/data/
 *.db-*
 dist-demo/
 dist-logo/
+dist-portrait/
+marketing/videos/

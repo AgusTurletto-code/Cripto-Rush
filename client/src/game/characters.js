@@ -30,7 +30,7 @@ function canvasTex(w, h, draw) {
 }
 
 /** Malla con contorno (casco invertido un poco más grande). */
-function mesh(geo, mat, outline = 0.045) {
+export function mesh(geo, mat, outline = 0.045) {
   const m = new THREE.Mesh(geo, mat);
   if (outline) {
     geo.computeBoundingSphere();

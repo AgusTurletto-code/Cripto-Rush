@@ -28,7 +28,7 @@ crypto-rush/
 | Cambiar de carril | deslizar ⬅️ ➡️ | ← → / A D |
 | Saltar (velas rojas) | deslizar ⬆️ | ↑ / W / espacio |
 | Deslizarse (banners TAX AUDIT) | deslizar ⬇️ | ↓ / S |
-| Camiones Bear Express | hay que esquivarlos de carril | |
+| Oso bajista / muro CRASH | hay que esquivarlos de carril | |
 
 Power-ups: 🐋 Ballena imán · 🚀 To the Moon (vuelo) · 🛡️ Escudo HODL.
 

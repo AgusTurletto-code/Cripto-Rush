@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createRng } from './rng.js';
 import { LANES, RULES, speedAtDistance } from './rules.js';
-import { toon, coinFaceTex } from './characters.js';
+import { toon, coinFaceTex, mesh as outlined } from './characters.js';
 
 // ---------------------------------------------------------------------------
 // Texturas generadas con canvas (sin assets externos)
@@ -61,27 +61,39 @@ const windowsLitTex = canvasTexture(128, 128, (g, w, h) => {
   }
 }, true);
 
-const truckSideTex = canvasTexture(512, 256, (g, w, h) => {
-  g.fillStyle = '#8a4b26'; g.fillRect(0, 0, w, h);
-  g.fillStyle = '#6d3618'; for (let x = 0; x < w; x += 32) g.fillRect(x, 0, 4, h);
-  g.fillStyle = '#ff3b3b'; g.font = '900 64px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText('BEAR', w / 2, 80);
-  g.fillStyle = '#fff'; g.font = '900 40px sans-serif'; g.fillText('MARKET EXPRESS', w / 2, 140);
-  // gráfico bajista
-  g.strokeStyle = '#ff3b3b'; g.lineWidth = 8; g.beginPath();
-  [[60, 180], [120, 200], [170, 190], [230, 215], [290, 205], [350, 228], [420, 240]].forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
-  g.stroke();
+const signTex = canvasTexture(256, 160, (g, w, h) => {
+  g.fillStyle = '#e01e1e'; g.beginPath(); g.roundRect(4, 4, w - 8, h - 8, 18); g.fill();
+  g.strokeStyle = '#fff'; g.lineWidth = 8; g.beginPath(); g.roundRect(14, 14, w - 28, h - 28, 12); g.stroke();
+  g.fillStyle = '#fff'; g.font = '900 64px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('SELL', w / 2, 66); g.font = '900 44px sans-serif'; g.fillText('▼▼▼', w / 2, 118);
 });
-const bearFaceTex = canvasTexture(256, 256, (g, w, h) => {
-  g.fillStyle = '#6d3618'; g.fillRect(0, 0, w, h);
-  g.fillStyle = '#4a220d'; g.beginPath(); g.arc(60, 70, 34, 0, 7); g.arc(196, 70, 34, 0, 7); g.fill();
-  g.fillStyle = '#5a2a10'; g.beginPath(); g.arc(128, 140, 92, 0, 7); g.fill();
-  g.fillStyle = '#d9a066'; g.beginPath(); g.ellipse(128, 180, 48, 34, 0, 0, 7); g.fill();
-  g.fillStyle = '#fff'; g.beginPath(); g.arc(92, 118, 18, 0, 7); g.arc(164, 118, 18, 0, 7); g.fill();
-  g.fillStyle = '#ff2a2a'; g.beginPath(); g.arc(92, 122, 9, 0, 7); g.arc(164, 122, 9, 0, 7); g.fill();
-  g.strokeStyle = '#2a1206'; g.lineWidth = 8; g.beginPath(); g.moveTo(68, 92); g.lineTo(110, 104); g.moveTo(188, 92); g.lineTo(146, 104); g.stroke(); // cejas enojadas
-  g.fillStyle = '#2a1206'; g.beginPath(); g.ellipse(128, 166, 18, 12, 0, 0, 7); g.fill();
-  g.beginPath(); g.moveTo(98, 205); g.quadraticCurveTo(128, 185, 158, 205); g.stroke();
+const minusTex = canvasTexture(256, 64, (g, w, h) => {
+  g.fillStyle = '#b71c1c'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#fff'; g.font = '900 44px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('▼ -80%', w / 2, h / 2 + 2);
+});
+const crashTex = canvasTexture(512, 512, (g, w, h) => {
+  g.fillStyle = '#0b0f1a'; g.fillRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(255,255,255,.08)'; g.lineWidth = 2;
+  for (let i = 1; i < 8; i++) { g.beginPath(); g.moveTo(0, i * 64); g.lineTo(w, i * 64); g.stroke(); g.beginPath(); g.moveTo(i * 64, 0); g.lineTo(i * 64, h); g.stroke(); }
+  // velas rojas cayendo
+  const candles = [[40, 140, 70], [100, 180, 80], [160, 230, 70], [220, 260, 90], [280, 320, 70], [340, 360, 80], [400, 410, 60], [460, 440, 50]];
+  for (const [x, y, hh] of candles) {
+    g.fillStyle = '#ff3b3b'; g.fillRect(x - 3, y - 22, 6, hh + 44); g.fillRect(x - 18, y, 36, hh);
+  }
+  // flecha gigante hacia abajo
+  g.strokeStyle = '#ff3b3b'; g.lineWidth = 26; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(60, 110); g.lineTo(400, 400); g.stroke();
+  g.fillStyle = '#ff3b3b'; g.beginPath(); g.moveTo(470, 470); g.lineTo(330, 440); g.lineTo(440, 330); g.fill();
+  // títulos
+  g.fillStyle = '#e01e1e'; g.fillRect(0, 0, w, 96);
+  g.fillStyle = '#fff'; g.font = '900 78px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('CRASH', w / 2, 52);
+  g.fillStyle = '#ff3b3b'; g.font = '900 64px monospace'; g.textAlign = 'left'; g.fillText('-90%', 24, 470);
+});
+const jerseyTex = canvasTexture(256, 64, (g, w, h) => {
+  g.fillStyle = '#c9c9c9'; g.fillRect(0, 0, w, h);
+  for (let x = -h; x < w + h; x += 48) { g.fillStyle = '#e01e1e'; g.beginPath(); g.moveTo(x, h); g.lineTo(x + 24, h); g.lineTo(x + 24 + h, 0); g.lineTo(x + h, 0); g.fill(); }
 });
 const auditTex = canvasTexture(512, 192, (g, w, h) => {
   g.fillStyle = '#ffd60a'; g.fillRect(0, 0, w, h);
@@ -157,13 +169,20 @@ const M = {
   stripes: toon(0xffffff, { map: stripesTex }),
   audit: toon(0xffffff, { map: auditTex }),
   lightOn: new THREE.MeshBasicMaterial({ color: 0xff8a00 }),
-  truckSide: toon(0xffffff, { map: truckSideTex }),
-  truckFace: toon(0xffffff, { map: bearFaceTex }),
-  truckBrown: toon(0x6d3618),
-  tire: toon(0x1a1a1a),
-  rim: toon(0xbbbbbb),
-  glass: toon(0x2a3a55, { emissive: 0x0a1020 }),
-  headlight: new THREE.MeshBasicMaterial({ color: 0xfff2b0 }),
+  bearFur: toon(0x7a4a2a),
+  bearBelly: toon(0xc8935f),
+  bearDark: toon(0x3b2212),
+  bearEye: new THREE.MeshBasicMaterial({ color: 0xff2020 }),
+  white: toon(0xffffff),
+  black: new THREE.MeshBasicMaterial({ color: 0x141414 }),
+  tie: toon(0xe01e1e),
+  platform: toon(0xb71c1c),
+  sign: new THREE.MeshBasicMaterial({ map: signTex }),
+  minus: new THREE.MeshBasicMaterial({ map: minusTex }),
+  crash: new THREE.MeshBasicMaterial({ map: crashTex }),
+  jersey: toon(0xffffff, { map: jerseyTex }),
+  metal: toon(0x37474f),
+  alarm: new THREE.MeshBasicMaterial({ color: 0xff2020 }),
   pole: toon(0x3a3f4f),
   bulb: new THREE.MeshBasicMaterial({ color: 0xfff0c0 }),
   roof: toon(0x4b5263),
@@ -199,10 +218,88 @@ const part = (geo, mat, [x, y, z] = [0, 0, 0], [sx, sy, sz] = [1, 1, 1]) => {
 export const OBSTACLE_TYPES = {
   low: { y0: 0, y1: 1.0, len: 0.6 },   // velas rojas: saltar
   high: { y0: 1.25, y1: 3.2, len: 0.3 }, // TAX AUDIT: deslizarse
-  wall: { y0: 0, y1: 3.0, len: 7 },     // Bear Express: cambiar de carril
+  wall: { y0: 0, y1: 3.0, len: 2.3 },   // oso bajista / muro CRASH: cambiar de carril
 };
 
-function makeObstacle(type) {
+// Los muros tienen muchas piezas: se arman una vez y después se clonan (comparten geometría y materiales)
+const wallTemplates = {};
+function wallTemplate(variant) {
+  if (!wallTemplates[variant]) wallTemplates[variant] = variant === 'bear' ? buildBear() : buildCrashWall();
+  if (variant === 'bear') wallTemplates[variant].scale.set(1.2, 1.12, 1.0); // más imponente (sigue dentro del carril)
+  return wallTemplates[variant];
+}
+
+/** Oso bajista gigante: traje, corbata roja y cartel de SELL. */
+function buildBear() {
+  const g = new THREE.Group();
+  const z = -1.15; // centro de la caja de colisión
+  // tarima roja con "-80%"
+  g.add(part(G.box, M.platform, [0, 0.14, z], [2.2, 0.28, 2.2]));
+  g.add(part(G.plane, M.minus, [0, 0.14, z + 1.105], [1.6, 0.26, 1]));
+  // piernas y cuerpo
+  for (const s of [-1, 1]) g.add(outlined(new THREE.CapsuleGeometry(0.24, 0.3, 4, 10), M.bearFur, 0.04)).children.at(-1).position.set(s * 0.32, 0.6, z);
+  const body = outlined(new THREE.SphereGeometry(0.78, 20, 16), M.bearFur, 0.05);
+  body.scale.set(1, 1.08, 0.82); body.position.set(0, 1.4, z); g.add(body);
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.55, 18, 14), M.bearBelly);
+  belly.scale.set(1, 1.1, 0.5); belly.position.set(0, 1.3, z + 0.42); g.add(belly);
+  // cuello de camisa y corbata
+  g.add(part(new THREE.ConeGeometry(0.28, 0.2, 3), M.white, [0, 1.98, z + 0.5])).children.at(-1).rotation.x = Math.PI;
+  g.add(outlined(new THREE.BoxGeometry(0.16, 0.7, 0.05).translate(0, -0.35, 0), M.tie, 0.02)).children.at(-1).position.set(0, 1.95, z + 0.62);
+
+  // parte de arriba (se balancea): cabeza y brazos
+  const up = new THREE.Group(); up.name = 'bearUpper'; up.position.set(0, 1.9, z); g.add(up);
+  const head = new THREE.Group(); head.position.y = 0.62; up.add(head);
+  const skull = outlined(new THREE.SphereGeometry(0.56, 22, 18), M.bearFur, 0.05); skull.scale.set(1.05, 0.95, 0.95); head.add(skull);
+  for (const s of [-1, 1]) {
+    const ear = outlined(new THREE.SphereGeometry(0.2, 14, 10), M.bearFur, 0.03); ear.position.set(s * 0.44, 0.44, -0.05); head.add(ear);
+    const inner = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), M.bearBelly); inner.position.set(s * 0.44, 0.44, 0.1); inner.scale.z = 0.4; head.add(inner);
+    // ojos rojos con cejas enojadas
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), M.white); eye.position.set(s * 0.2, 0.12, 0.45); eye.scale.z = 0.6; head.add(eye);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), M.bearEye); pupil.position.set(s * 0.19, 0.11, 0.51); head.add(pupil);
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.07, 0.06), M.bearDark); brow.position.set(s * 0.2, 0.28, 0.48); brow.rotation.z = s * 0.45; head.add(brow);
+  }
+  const muzzle = outlined(new THREE.SphereGeometry(0.27, 16, 12), M.bearBelly, 0.025); muzzle.scale.set(1.25, 0.85, 0.85); muzzle.position.set(0, -0.14, 0.42); head.add(muzzle);
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 10), M.black); nose.scale.set(1.3, 0.85, 0.8); nose.position.set(0, -0.04, 0.65); head.add(nose);
+  const mouth = new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 10), M.black); mouth.scale.set(1.2, 0.6, 0.4); mouth.position.set(0, -0.28, 0.6); head.add(mouth);
+  for (const x of [-0.09, 0.09]) {
+    const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.09, 6), M.white); tooth.position.set(x, -0.22, 0.66); tooth.rotation.x = Math.PI; head.add(tooth);
+  }
+  // brazo derecho en alto con el cartel SELL
+  const armGeo = new THREE.CapsuleGeometry(0.17, 0.5, 4, 10).translate(0, -0.25, 0);
+  const armR = new THREE.Group(); armR.position.set(0.66, 0.05, 0); armR.rotation.z = 2.85; up.add(armR);
+  armR.add(outlined(armGeo, M.bearFur, 0.03));
+  const sign = new THREE.Group(); sign.position.set(0.84, 1.0, 0.05); up.add(sign);
+  sign.add(part(G.cyl, M.bearDark, [0, -0.35, 0], [0.04, 0.7, 0.04]));
+  sign.add(part(G.box, M.white, [0, 0.12, -0.03], [1.04, 0.68, 0.04]));
+  sign.add(part(G.plane, M.sign, [0, 0.12, 0], [1.0, 0.64, 1]));
+  // brazo izquierdo hacia adelante con garras
+  const armL = new THREE.Group(); armL.position.set(-0.66, 0.05, 0); armL.rotation.set(-1.25, 0, -0.35); up.add(armL);
+  armL.add(outlined(armGeo, M.bearFur, 0.03));
+  for (const x of [-0.07, 0, 0.07]) {
+    const claw = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.12, 5), M.white); claw.position.set(x, -0.72, 0.06); claw.rotation.x = Math.PI; armL.add(claw);
+  }
+  g.traverse((o) => (o.frustumCulled = false));
+  return g;
+}
+
+/** Pantalla gigante de "CRASH" con velas rojas cayendo, sobre barreras de concreto. */
+function buildCrashWall() {
+  const g = new THREE.Group();
+  const z = -0.6;
+  g.add(part(G.box, M.jersey, [0, 0.4, z], [2.25, 0.8, 0.9]));
+  g.add(part(G.box, M.metal, [0, 1.73, z - 0.12], [2.3, 2.36, 0.22]));        // marco
+  g.add(part(G.plane, M.crash, [0, 1.73, z], [2.1, 2.16, 1]));                // pantalla
+  for (const x of [-1.12, 1.12]) {
+    g.add(part(G.box, M.metal, [x, 1.5, z - 0.12], [0.14, 3.0, 0.14]));
+    const strut = part(G.box, M.metal, [x, 1.3, z - 0.95], [0.1, 2.4, 0.1]); strut.rotation.x = -0.55; g.add(strut);
+    g.add(part(G.sphere, M.alarm, [x, 3.08, z - 0.1], [0.14, 0.14, 0.14]));
+    const s = new THREE.Sprite(glowMat(0xff2020, 0.9)); s.position.set(x, 3.08, z); s.scale.setScalar(1.1); g.add(s);
+  }
+  g.traverse((o) => (o.frustumCulled = false));
+  return g;
+}
+
+function makeObstacle(type, variant = 'bear') {
   const g = new THREE.Group();
   if (type === 'low') {
     g.add(part(G.box, M.candleDark, [0, 0.07, 0], [2.1, 0.14, 0.7]));
@@ -218,19 +315,7 @@ function makeObstacle(type) {
     }
     g.add(part(G.box, M.audit, [0, 1.9, 0], [2.3, 1.1, 0.16]));
   } else {
-    // camión: cabina (frente con cara de oso) + caja de carga
-    const cab = part(G.box, [M.truckBrown, M.truckBrown, M.truckBrown, M.truckBrown, M.truckFace, M.truckBrown], [0, 1.35, -0.9], [2.1, 2.3, 1.8]);
-    g.add(cab);
-    g.add(part(G.box, M.glass, [0, 2.15, -0.1], [1.7, 0.5, 0.05]));
-    g.add(part(G.box, [M.truckSide, M.truckSide, M.truckBrown, M.truckBrown, M.truckBrown, M.truckBrown], [0, 1.6, -4.4], [2.2, 2.8, 5.2]));
-    for (const x of [-0.75, 0.75]) {
-      g.add(part(G.sphere, M.headlight, [x, 0.55, 0.02], [0.15, 0.15, 0.05]));
-      const s = new THREE.Sprite(glowMat(0xfff2b0, 0.7)); s.position.set(x, 0.55, 0.1); s.scale.setScalar(1.1); g.add(s);
-    }
-    for (const z of [-1.0, -3.2, -6.2]) for (const x of [-1.05, 1.05]) {
-      g.add(part(G.wheel, M.tire, [x, 0.42, z]));
-      const rim = part(G.cyl, M.rim, [x * 1.08, 0.42, z], [0.2, 0.05, 0.2]); rim.rotation.z = Math.PI / 2; g.add(rim);
-    }
+    g.add(wallTemplate(variant).clone());
   }
   g.traverse((o) => (o.frustumCulled = false));
   return g;
@@ -495,10 +580,12 @@ export class World {
 
     for (let l = 0; l < 3; l++) {
       if (!types[l]) continue;
-      const mesh = makeObstacle(types[l]);
+      // la variante visual sale del rng de decoración: no cambia el recorrido de la partida
+      const variant = types[l] === 'wall' ? (this.decoRng.chance(0.5) ? 'bear' : 'crash') : null;
+      const mesh = makeObstacle(types[l], variant);
       mesh.position.set(LANES[l], 0, -d);
       this.root.add(mesh);
-      this.obstacles.push({ mesh, lane: l, type: types[l], d });
+      this.obstacles.push({ mesh, lane: l, type: types[l], d, anim: mesh.getObjectByName('bearUpper') });
     }
 
     const free = [0, 1, 2].filter((l) => !types[l]);
@@ -520,7 +607,7 @@ export class World {
       const t = row.types[lane];
       if (!t) continue;
       const delta = d - row.d;
-      if (t === 'wall' && delta > -3 && delta < 9) return null;
+      if (t === 'wall' && delta > -3 && delta < OBSTACLE_TYPES.wall.len + 2) return null;
       if (t === 'low' && Math.abs(delta) < 4.5) return 0.9 + 1.7 * (1 - Math.abs(delta) / 4.5);
       if (t === 'high' && Math.abs(delta) < 1.5) return 0.6;
     }
@@ -687,6 +774,13 @@ export class World {
     }
     const blinkOn = Math.sin(time * 6) > 0;
     M.lightOn.color.setHex(blinkOn ? 0xff8a00 : 0x552200);
+    M.alarm.color.setHex(Math.sin(time * 9) > 0 ? 0xff2020 : 0x501010);
+    // el oso se balancea y agita el cartel
+    for (const o of this.obstacles) {
+      if (!o.anim) continue;
+      o.anim.rotation.z = Math.sin(time * 3 + o.d) * 0.07;
+      o.anim.position.y = 1.9 + Math.abs(Math.sin(time * 6 + o.d)) * 0.06;
+    }
 
     this.particles.update(dt);
 

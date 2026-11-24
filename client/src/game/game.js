@@ -90,9 +90,10 @@ export class Game {
     this.dayPhase = 0.02; // cada partida arranca de día
     this.state = 'running';
     this.clock.getDelta();
+    this.focus?.();
   }
   pause() { if (this.state === 'running') this.state = 'paused'; }
-  resume() { if (this.state === 'paused') { this.state = 'running'; this.clock.getDelta(); } }
+  resume() { if (this.state === 'paused') { this.state = 'running'; this.clock.getDelta(); this.focus?.(); } }
   revive() {
     this.world.clearAhead(this.d - 2, 60);
     this.y = 0; this.vy = 0; this.slideLeft = 0;
@@ -100,6 +101,7 @@ export class Game {
     this.state = 'running';
     this.world.particles.emit(new THREE.Vector3(this.x, 1, -this.d), 'gold', 24, { spread: 1.5, up: 4, life: 0.8, size: 0.5 });
     this.clock.getDelta();
+    this.focus?.();
   }
   toMenu() {
     this.state = 'idle';
@@ -124,12 +126,27 @@ export class Game {
       }
       this.cb.onInput?.(a);
     };
-    window.addEventListener('keydown', (e) => {
-      const map = { ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right', ArrowUp: 'up', w: 'up', ' ': 'up', ArrowDown: 'down', s: 'down' };
-      if (map[e.key]) { act(map[e.key]); e.preventDefault(); }
-    });
-    let sx = 0, sy = 0, tracking = false;
+    // Teclado: se usa e.code (la tecla física), así funciona con mayúsculas y cualquier idioma de teclado
+    const KEYS = {
+      ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
+      ArrowUp: 'up', KeyW: 'up', Space: 'up', ArrowDown: 'down', KeyS: 'down',
+    };
+    const onKey = (e) => {
+      const a = KEYS[e.code] || KEYS[{ a: 'KeyA', d: 'KeyD', w: 'KeyW', s: 'KeyS', ' ': 'Space' }[e.key?.toLowerCase()]] || KEYS[e.key];
+      if (!a) return;
+      if (this.state === 'running') e.preventDefault(); // que Telegram/el navegador no use las flechas para scrollear
+      if (e.repeat) return; // mantener apretada la tecla no mueve varios carriles
+      act(a);
+    };
+    document.addEventListener('keydown', onKey, { capture: true });
+
+    // Dentro de Telegram el juego corre en una ventana incrustada: hay que tener el foco para recibir teclas
     const el = this.renderer.domElement;
+    el.tabIndex = 0;
+    el.style.outline = 'none';
+    this.focus = () => { try { window.focus(); el.focus({ preventScroll: true }); } catch { /* ignore */ } };
+    el.addEventListener('pointerdown', this.focus);
+    let sx = 0, sy = 0, tracking = false;
     el.addEventListener('touchstart', (e) => { const t = e.touches[0]; sx = t.clientX; sy = t.clientY; tracking = true; }, { passive: true });
     el.addEventListener('touchmove', (e) => {
       if (!tracking) return;

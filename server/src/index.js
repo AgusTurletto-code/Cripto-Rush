@@ -544,6 +544,7 @@ admin.get('/stats', wrap(() => ({
   adRevenue24h: db.prepare('SELECT COALESCE(SUM(revenue),0) s FROM ad_postbacks WHERE created_at >= ?').get(now() - DAY).s,
   adRevenueTotal: db.prepare('SELECT COALESCE(SUM(revenue),0) s FROM ad_postbacks').get().s,
   adVerifyMode: config.adVerifyMode,
+  db: { path: config.dbPath, persistent: config.dbPersistent, volume: config.volumePath, onRailway: !!process.env.RAILWAY_ENVIRONMENT },
   referralsConfigured: !!config.referrals.botUsername,
   dailyClaims24h: db.prepare('SELECT COUNT(*) c FROM users WHERE daily_last = ?').get(dayStr()).c,
   referredUsers: db.prepare('SELECT COUNT(*) c FROM users WHERE referred_by IS NOT NULL').get().c,

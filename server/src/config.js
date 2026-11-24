@@ -23,7 +23,12 @@ export const config = {
   adminKey: process.env.ADMIN_KEY || '',
   // DEV_MODE=1 permite jugar desde un navegador normal sin Telegram (usuario falso).
   devMode: process.env.DEV_MODE === '1',
-  dbPath: process.env.DB_PATH || path.resolve(__dirname, '../data/cryptorush.db'),
+  // Railway define RAILWAY_VOLUME_MOUNT_PATH cuando el servicio tiene un disco (Volume) conectado.
+  // Si falta DB_PATH pero hay disco, la base va al disco para no perder los saldos en cada reinicio.
+  dbPath: process.env.DB_PATH
+    || (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'cryptorush.db') : null)
+    || path.resolve(__dirname, '../data/cryptorush.db'),
+  volumePath: process.env.RAILWAY_VOLUME_MOUNT_PATH || '',
 
   economy: {
     // Cuántas monedas del juego equivalen a 1 USD. Ajustar según lo que paguen los anuncios.
@@ -63,6 +68,12 @@ export const RULES = {
   coinSpacing: 3,       // distancia mínima entre monedas de una misma fila
   maxRunSeconds: 60 * 30,
 };
+
+// ¿La base de datos está en un disco permanente?
+config.dbPersistent = !!config.volumePath && path.resolve(config.dbPath).startsWith(path.resolve(config.volumePath) + path.sep);
+if (process.env.RAILWAY_ENVIRONMENT && !config.dbPersistent) {
+  console.warn(`[config] ⚠️  La base de datos (${config.dbPath}) NO está en un Volume de Railway: los saldos se borran en cada reinicio.`);
+}
 
 if (!config.devMode && !config.botToken) {
   console.warn('[config] ⚠️  Falta BOT_TOKEN. Sin él no se puede validar a los usuarios de Telegram.');

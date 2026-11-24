@@ -146,25 +146,35 @@ export class Game {
     el.style.outline = 'none';
     this.focus = () => { try { window.focus(); el.focus({ preventScroll: true }); } catch { /* ignore */ } };
     el.addEventListener('pointerdown', this.focus);
-    let sx = 0, sy = 0, tracking = false;
-    el.addEventListener('touchstart', (e) => { const t = e.touches[0]; sx = t.clientX; sy = t.clientY; tracking = true; }, { passive: true });
-    el.addEventListener('touchmove', (e) => {
-      if (!tracking) return;
-      const t = e.touches[0];
-      const dx = t.clientX - sx, dy = t.clientY - sy;
-      if (Math.max(Math.abs(dx), Math.abs(dy)) < 30) return;
-      tracking = false;
+    // Deslizar (dedo o mouse) en cualquier parte de la pantalla, salvo sobre botones y menús
+    const isUi = (t) => t instanceof Element && !!t.closest('button, input, select, a, label, .modal, .screen');
+    const swipe = (dx, dy) => {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return false;
       if (Math.abs(dx) > Math.abs(dy)) act(dx > 0 ? 'right' : 'left');
       else act(dy > 0 ? 'down' : 'up');
+      return true;
+    };
+    let start = null;
+    document.addEventListener('touchstart', (e) => {
+      if (this.state !== 'running' || isUi(e.target)) { start = null; return; }
+      const t = e.touches[0]; start = { x: t.clientX, y: t.clientY };
     }, { passive: true });
-    el.addEventListener('touchend', () => { tracking = false; });
+    document.addEventListener('touchmove', (e) => {
+      if (!start) return;
+      const t = e.touches[0];
+      if (swipe(t.clientX - start.x, t.clientY - start.y)) start = null; // un gesto = una acción
+    }, { passive: true });
+    document.addEventListener('touchend', () => { start = null; });
+    document.addEventListener('touchcancel', () => { start = null; });
     let md = null;
-    el.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse') md = { x: e.clientX, y: e.clientY }; });
-    el.addEventListener('pointerup', (e) => {
+    document.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'mouse' || this.state !== 'running' || isUi(e.target)) return;
+      md = { x: e.clientX, y: e.clientY };
+      this.focus();
+    });
+    document.addEventListener('pointerup', (e) => {
       if (!md || e.pointerType !== 'mouse') return;
-      const dx = e.clientX - md.x, dy = e.clientY - md.y; md = null;
-      if (Math.max(Math.abs(dx), Math.abs(dy)) < 30) return;
-      if (Math.abs(dx) > Math.abs(dy)) act(dx > 0 ? 'right' : 'left'); else act(dy > 0 ? 'down' : 'up');
+      swipe(e.clientX - md.x, e.clientY - md.y); md = null;
     });
   }
 

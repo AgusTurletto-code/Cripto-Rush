@@ -304,6 +304,12 @@ app.use('/api', (err, _req, res, _next) => {
 
 // ---------- Archivos estáticos (cliente compilado + panel admin) ----------
 app.get('/admin', (_req, res) => res.sendFile(path.resolve(__dirname, 'admin.html')));
+// Manifest de TON Connect con el dominio real (PUBLIC_URL o el host de la petición)
+app.get('/tonconnect-manifest.json', (req, res) => {
+  const base = (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+  res.set('Access-Control-Allow-Origin', '*');
+  res.json({ url: base, name: 'Crypto Rush', iconUrl: `${base}/icon.png` });
+});
 const dist = path.resolve(__dirname, '../../client/dist');
 app.use(express.static(dist));
 app.get('*', (_req, res) => res.sendFile(path.join(dist, 'index.html')));

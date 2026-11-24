@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => {
     }],
     server: {
       host: true,
-      proxy: { '/api': 'http://localhost:3000' },
+      proxy: { '/api': 'http://localhost:3000', '/tonconnect-manifest.json': 'http://localhost:3000' },
       fs: { allow: ['..'] }, // permite importar ../shared
     },
     build: { chunkSizeWarningLimit: 1500 },

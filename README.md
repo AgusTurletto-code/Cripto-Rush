@@ -70,6 +70,26 @@ cd server && npm install && npm run dev
 Abre http://localhost:3000. Con `npm run dev`, el servidor arranca con `DEV_MODE=1`: puedes jugar sin Telegram y los anuncios son simulados.
 Si vas a modificar el juego, corre también `cd client && npm run dev` (http://localhost:5173, con recarga automática).
 
+## Publicar en Railway
+
+El repo incluye un `Dockerfile`: Railway lo detecta solo.
+
+1. En [railway.com](https://railway.com) → **New Project** → **Deploy from GitHub repo** → elegí este repositorio.
+2. En el servicio → **Variables**, cargá:
+
+   | Variable | Valor |
+   |---|---|
+   | `BOT_TOKEN` | el token de @BotFather |
+   | `SESSION_SECRET` | una cadena larga al azar |
+   | `ADMIN_KEY` | tu clave para el panel `/admin` |
+   | `DB_PATH` | `/data/cryptorush.db` |
+   | `VITE_MONETAG_ZONE` | número de zona de Monetag (cuando lo tengas) |
+   | `VITE_TWA_RETURN_URL` | `https://t.me/TuBot/app` (cuando crees la Mini App) |
+
+3. Click derecho en el servicio → **Attach Volume** → montalo en `/data` (ahí se guarda la base de datos; sin esto se pierde en cada deploy).
+4. **Settings → Networking → Generate Domain**: te da una URL `https://algo.up.railway.app`.
+5. Cada vez que subas cambios a GitHub, Railway vuelve a publicar solo.
+
 ## Publicarlo en Telegram (paso a paso)
 
 1. **Crea el bot:** en Telegram habla con [@BotFather](https://t.me/BotFather), usa `/newbot` y guarda el token.

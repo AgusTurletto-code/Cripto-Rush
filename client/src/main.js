@@ -1,6 +1,6 @@
 import { Game } from './game/game.js';
 import { CHARACTERS } from './game/characters.js';
-import { api, errMsg } from './services/api.js';
+import { api, errMsg, DEMO } from './services/api.js';
 import { initTelegram, haptic, tg } from './services/telegram.js';
 import { showRewardedAd, preloadAds } from './services/ads.js';
 import { initWallet, friendly, short } from './services/wallet.js';
@@ -72,6 +72,7 @@ function showHome() {
         <button class="btn" id="chars">${EMOJI[user.character]} Personajes</button>
         <button class="btn green" id="wallet">💸 Retirar</button>
       </div>
+      ${DEMO ? '<div class="hint" style="color:var(--gold)">🧪 Versión demo: anuncios simulados y retiros de prueba</div>' : ''}
       <div class="hint">Desliza ⬅️ ➡️ para cambiar de carril · ⬆️ saltar · ⬇️ deslizarte<br>
       Hoy ganaste ${fmt(user.earnedToday)} / ${fmt(cfg.dailyCoinCap)} monedas</div>
     </div>
@@ -95,6 +96,17 @@ function showHud() {
 
 function modal(html) {
   ui.insertAdjacentHTML('beforeend', `<div class="modal-bg" id="modal"><div class="modal">${html}</div></div>`);
+}
+/** Confirmación dentro del juego (los diálogos nativos no funcionan bien en Telegram). */
+function askConfirm(text) {
+  return new Promise((resolve) => {
+    closeModal();
+    modal(`<h2>¿Confirmas?</h2><p>${esc(text)}</p>
+      <div class="stack"><button class="btn primary" id="c-yes">Sí, confirmar</button>
+      <button class="btn ghost" id="c-no">Cancelar</button></div>`);
+    on('#c-yes', () => { closeModal(); resolve(true); });
+    on('#c-no', () => { closeModal(); resolve(false); });
+  });
 }
 const closeModal = () => { $('#modal')?.remove(); $('.flash')?.remove(); };
 
@@ -227,7 +239,7 @@ function showCharacters() {
     b.onclick = async () => {
       const id = b.dataset.id;
       const owned = user.owned.includes(id);
-      if (!owned && !confirm(`¿Comprar ${CHARACTERS[id].name} por ${fmt(cfg.characters[id].price)} monedas?`)) return;
+      if (!owned && !(await askConfirm(`¿Comprar ${CHARACTERS[id].name} por ${fmt(cfg.characters[id].price)} monedas?`))) return;
       try {
         user = await api.buyCharacter(id);
         game.setCharacter(id);
@@ -248,7 +260,7 @@ async function showWallet() {
       <p class="legal">Tasa: ${fmt(cfg.coinsPerUsd)} monedas = 1 USD · Mínimo: ${fmt(cfg.minWithdrawCoins)} monedas ($${usd(cfg.minWithdrawCoins)})</p>
     </div>
     <div class="box"><h3>1. Conecta tu wallet TON</h3>
-      <div id="ton-btn"></div>
+      ${DEMO ? '<button class="btn" id="demo-wallet">🔗 Conectar wallet de prueba</button>' : '<div id="ton-btn"></div>'}
       <p class="legal" id="w-addr">${user.wallet ? 'Wallet registrada: ' + esc(short(user.wallet)) : 'Usa Tonkeeper, @wallet u otra wallet TON.'}</p>
     </div>
     <div class="box"><h3>2. Solicita el retiro</h3>
@@ -268,7 +280,11 @@ async function showWallet() {
   const upd = () => { $('#amt-usd').textContent = '≈ $' + usd(Number($('#amt').value || 0)); };
   $('#amt').oninput = upd; upd();
 
-  initWallet('ton-btn', async (addr) => {
+  on('#demo-wallet', async () => {
+    user = await api.setWallet('UQDemo' + 'x'.repeat(38) + 'Demo');
+    $('#w-addr').textContent = 'Wallet de prueba: ' + short(user.wallet);
+  });
+  if (!DEMO) initWallet('ton-btn', async (addr) => {
     if (!addr) return;
     try {
       user = await api.setWallet(friendly(addr));
@@ -279,7 +295,7 @@ async function showWallet() {
 
   on('#go', async () => {
     const coins = Math.floor(Number($('#amt').value));
-    if (!confirm(`¿Retirar ${fmt(coins)} monedas (≈ $${usd(coins)}) en ${$('#cur').value}?`)) return;
+    if (!(await askConfirm(`¿Retirar ${fmt(coins)} monedas (≈ $${usd(coins)}) en ${$('#cur').value}?`))) return;
     try {
       const r = await api.withdraw(coins, $('#cur').value);
       user = r.user;

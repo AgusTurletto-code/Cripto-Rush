@@ -1,4 +1,7 @@
 import { initData } from './telegram.js';
+import { demoApi } from './demoApi.js';
+
+export const DEMO = import.meta.env.VITE_DEMO === '1';
 
 const BASE = import.meta.env.VITE_API_URL || '';
 let token = null;
@@ -16,7 +19,7 @@ async function call(method, path, body) {
   return data;
 }
 
-export const api = {
+const realApi = {
   async login() {
     const r = await call('POST', '/auth', { initData: initData() });
     token = r.token;
@@ -32,6 +35,8 @@ export const api = {
   withdraw: (coins, currency) => call('POST', '/withdraw', { coins, currency }),
   withdrawals: () => call('GET', '/withdrawals'),
 };
+
+export const api = DEMO ? demoApi : realApi;
 
 export const ERRORS = {
   network_error: 'Sin conexión con el servidor',

@@ -126,7 +126,8 @@ function showHome() {
       </div>
       ${DEMO ? `<div class="hint" style="color:var(--gold)">${esc(t('demo_hint'))}</div>` : ''}
       <div class="hint">${esc(t(KEYBOARD ? 'controls_keys' : 'controls_touch'))}<br>
-      🏁 ${esc(t('record', { n: fmt(user.bestDistance) }))} · ${esc(t('mult_hint', { name: CHARACTERS[user.character]?.name, mult: fmtMult(multOf(user.character)) }))}</div>
+      🏁 ${esc(t('record', { n: fmt(user.bestDistance) }))} · ${esc(t('mult_hint', { name: CHARACTERS[user.character]?.name, mult: fmtMult(multOf(user.character)) }))}<br>
+      <button class="linkbtn" id="legal">${esc(t('legal_link'))}</button></div>
     </div>
   </div>`);
   on('#play', startRun);
@@ -135,6 +136,8 @@ function showHome() {
   on('#daily', showDaily);
   on('#invite', showInvite);
   on('#wheelbtn', showWheel);
+  on('#legal', () => showLegal(showHome));
+  if (!user.termsAccepted) { showTermsGate(); return; }
   on('#sound', () => { setMuted(!isMuted()); toast(isMuted() ? t('sound_off') : t('sound_on'), 1200); showHome(); });
   on('#lang', () => setLang(LANG === 'es' ? 'en' : 'es'));
   if (dailyReady && !dailyShownThisSession) { dailyShownThisSession = true; setTimeout(showDaily, 400); }
@@ -392,6 +395,45 @@ async function showInvite() {
     : `<li>${esc(t('ref_none'))}</li>`;
 }
 
+// ---------- Términos y privacidad ----------
+const MIN_AGE = 18;
+let legalCache = null;
+async function loadLegal() {
+  if (!legalCache) legalCache = await api.legal(LANG);
+  return legalCache;
+}
+
+/** Pantalla con los términos completos (los arma el servidor con los valores reales). */
+async function showLegal(back) {
+  render(`<div class="screen scroll">
+    <div class="page-head"><button class="back" id="back" aria-label="${esc(t('back_btn'))}">←</button><h2>${esc(t('legal_title'))}</h2></div>
+    <div class="box legal-doc" id="legal-doc">${esc(t('loading'))}</div></div>`);
+  on('#back', back);
+  try {
+    const l = await loadLegal();
+    const box = $('#legal-doc');
+    if (box) box.innerHTML = l.html; // contenido de nuestro propio servidor
+  } catch (e) { toast(errMsg(e)); }
+}
+
+/** Primera vez (o términos nuevos): hay que aceptarlos para seguir. */
+function showTermsGate() {
+  closeModal();
+  modal(`<h2>${esc(t('terms_welcome'))}</h2><p class="terms-sum">${esc(t('terms_summary'))}</p>
+    <div class="stack"><button class="btn" id="t-read">${esc(t('terms_read'))}</button>
+    <button class="btn primary" id="t-ok">${esc(t('terms_accept', { age: MIN_AGE }))}</button></div>`);
+  on('#t-read', () => showLegal(() => { showHome(); }));
+  on('#t-ok', async () => {
+    $('#t-ok').disabled = true;
+    try {
+      const l = await loadLegal();
+      user = await api.acceptTerms(l.version);
+      closeModal(); haptic('success');
+      showHome();
+    } catch (e) { toast(errMsg(e)); $('#t-ok').disabled = false; }
+  });
+}
+
 // ---------- Ruleta ----------
 let wheelAngle = 0;
 let wheelTimer = null;
@@ -419,13 +461,14 @@ function showWheel() {
     <p class="spins-left" id="spins-left"></p>
     <button class="btn primary" id="spin" style="width:100%"></button>
     <div class="box" style="margin-top:14px"><h3>${esc(t('odds_title'))}</h3><ul class="list odds">${oddsRows}</ul>
-      <p class="legal">${esc(t('wheel_note'))}</p></div>
+      <p class="legal">${esc(t('wheel_note'))} <button class="linkbtn" id="wlegal">${esc(t('legal_link'))}</button></p></div>
   </div>`);
   const canvas = $('#wheel');
   drawWheel(canvas, w.segments, { jackpot: t('jackpot_label', { usd: w.jackpotUsd }), fmt });
   canvas.style.transform = `rotate(${wheelAngle}deg)`;
   on('#back', () => { clearInterval(wheelTimer); showHome(); });
   on('#spin', doSpin);
+  on('#wlegal', () => { clearInterval(wheelTimer); showLegal(showWheel); });
   updateSpinUi();
   clearInterval(wheelTimer);
   wheelTimer = setInterval(() => { if (!$('#spin')) clearInterval(wheelTimer); else updateSpinUi(); }, 30000);
@@ -554,9 +597,10 @@ async function showWallet() {
         ${esc(canWithdraw ? t('request_btn') : t('missing_coins', { n: fmt(cfg.minWithdrawCoins - user.balance) }))}</button>
     </div>
     <div class="box"><h3>${esc(t('history'))}</h3><ul class="list" id="hist"><li>${esc(t('loading'))}</li></ul></div>
-    <p class="legal">${esc(t('withdraw_note'))}</p>
+    <p class="legal">${esc(t('withdraw_note'))} <button class="linkbtn" id="wdlegal">${esc(t('legal_link'))}</button></p>
   </div>`);
   on('#back', showHome);
+  on('#wdlegal', () => showLegal(showWallet));
   const upd = () => { $('#amt-usd').textContent = '≈ $' + usd(Number($('#amt').value || 0)); };
   $('#amt').oninput = upd; upd();
 

@@ -109,7 +109,8 @@ addUserCol('daily_last', 'TEXT');
 addUserCol('referred_by', 'TEXT');
 addUserCol('ref_status', 'TEXT');          // pending | qualified | blocked
 addUserCol('ref_earnings', 'INTEGER NOT NULL DEFAULT 0');
-addUserCol('wallet_key', 'TEXT');          // wallet normalizada (para detectar la misma wallet en 2 cuentas)
+addUserCol('wallet_key', 'TEXT');
+addUserCol('terms_version', 'TEXT');          // versión de términos aceptada          // wallet normalizada (para detectar la misma wallet en 2 cuentas)
 db.exec('CREATE INDEX IF NOT EXISTS idx_users_ref ON users(referred_by)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_users_wallet ON users(wallet_key)');
 const runCols2 = db.prepare('PRAGMA table_info(runs)').all().map((c) => c.name);

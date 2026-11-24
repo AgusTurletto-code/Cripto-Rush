@@ -8,6 +8,7 @@ import { validateInitData, signSession, verifySession } from './auth.js';
 import { checkRun, CHARACTERS, multiplierOf, creditFor } from './game.js';
 import { rate, minWithdrawCoins, economyState, recordIssued, recordSpent, recompute } from './economy.js';
 import { WHEEL, pickSegment, publicWheel } from './wheel.js';
+import { TERMS_VERSION, legalHtml, legalPage } from './legal.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -16,6 +17,7 @@ app.use(express.json({ limit: '20kb' }));
 
 const now = () => Date.now();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const legalLang = (req) => (req.query.lang || req.acceptsLanguages('es', 'en') || 'en');
 const DAY = 24 * 3600 * 1000;
 const startOfDay = () => { const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d.getTime(); };
 
@@ -138,6 +140,7 @@ function publicUser(u) {
     earnedToday,
     daily: dailyState(u),
     spins: spinStatus(u.id),
+    termsAccepted: u.terms_version === TERMS_VERSION,
   };
 }
 
@@ -253,6 +256,13 @@ const api = express.Router();
 api.use(auth);
 
 api.get('/me', wrap((req) => publicUser(req.user)));
+
+api.post('/terms/accept', wrap((req) => {
+  if (req.body?.version !== TERMS_VERSION) throw new ApiError(409, 'terms_outdated');
+  db.prepare('UPDATE users SET terms_version = ? WHERE id = ?').run(TERMS_VERSION, req.user.id);
+  return publicUser(getUser.get(req.user.id));
+}));
+const requireTerms = (u) => { if (u.terms_version !== TERMS_VERSION) throw new ApiError(403, 'terms_required'); };
 
 // el juego informa cuando un anuncio falla (para el diagnóstico del panel)
 api.post('/ads/error', wrap((req) => {
@@ -439,6 +449,7 @@ function settleSpin(ymid, telegramId) {
 }
 
 api.post('/spin/start', wrap((req) => {
+  requireTerms(req.user); // la ruleta tiene premio en dinero: hay que aceptar las reglas
   const st = spinStatus(req.user.id);
   if (st.left <= 0) throw new ApiError(429, 'spin_limit');
   const id = crypto.randomUUID();
@@ -554,6 +565,7 @@ api.get('/withdrawals', wrap((req) =>
 ));
 
 api.post('/withdraw', wrap((req) => {
+  requireTerms(req.user);
   const coins = Math.floor(Number(req.body?.coins));
   const currency = req.body?.currency;
   const e = config.economy;
@@ -653,6 +665,8 @@ admin.post('/users/:id/ban', wrap((req) => {
   db.prepare('UPDATE users SET banned = ? WHERE id = ?').run(req.body?.banned === false ? 0 : 1, req.params.id);
   return { ok: true };
 }));
+// pública (antes del control de sesión de /api)
+app.get('/api/legal', (req, res) => res.json({ version: TERMS_VERSION, html: legalHtml(legalLang(req)) }));
 app.use('/api/admin', admin);
 app.use('/api', api);
 
@@ -664,6 +678,8 @@ app.use('/api', (err, _req, res, _next) => {
 
 // ---------- Archivos estáticos (cliente compilado + panel admin) ----------
 app.get('/admin', (_req, res) => res.sendFile(path.resolve(__dirname, 'admin.html')));
+// Términos y privacidad: página pública (para links) y fragmento para el juego
+app.get(['/terms', '/terminos', '/privacy'], (req, res) => res.type('html').send(legalPage(legalLang(req))));
 // Manifest de TON Connect con el dominio real (PUBLIC_URL o el host de la petición)
 app.get('/tonconnect-manifest.json', (req, res) => {
   const base = (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');

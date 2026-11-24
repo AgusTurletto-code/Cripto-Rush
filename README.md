@@ -87,6 +87,9 @@ El repo incluye un `Dockerfile`: Railway lo detecta solo.
    | `VITE_TWA_RETURN_URL` | `https://t.me/TuBot/app` (cuando crees la Mini App) |
    | `BOT_USERNAME` | usuario del bot sin @ (para los links de invitación) |
    | `MINI_APP_NAME` | short name de la Mini App (por defecto `play`) |
+   | `LEGAL_OWNER` | tu nombre o el de tu empresa (aparece en los términos) |
+   | `LEGAL_COUNTRY` | país cuya ley rige los términos |
+   | `LEGAL_CONTACT` | contacto para soporte y privacidad (usuario de Telegram o email) |
 
 3. Click derecho en el servicio → **Attach Volume** → montalo en `/data` (ahí se guarda la base de datos; sin esto se pierde en cada deploy).
 4. **Settings → Networking → Generate Domain**: te da una URL `https://algo.up.railway.app`.
@@ -131,6 +134,14 @@ El repo incluye un `Dockerfile`: Railway lo detecta solo.
   - Un referido desde el mismo teléfono o con la misma wallet que quien lo invitó queda **bloqueado** (no paga nada).
   - El panel `/admin` muestra en cada retiro las cuentas vinculadas (mismo teléfono / wallet / IP) y permite suspenderlas.
   - La IP es una señal débil (familias, wifi público y datos móviles comparten IP): revisala, no rechaces solo por eso.
+
+## Términos y privacidad
+
+- Se ven en el juego (link en el menú, la ruleta y los retiros) y en `https://TU-DOMINIO/terms` (`?lang=es` o `?lang=en`).
+- El texto (`server/src/legal.js`) usa los valores reales: tasa, retiro mínimo, diario, referidos y probabilidades de la ruleta.
+- Los jugadores los aceptan al entrar (18+). Sin aceptarlos no pueden girar la ruleta ni retirar.
+- Si cambiás el texto, actualizá `TERMS_VERSION` en `legal.js`: todos tendrán que volver a aceptarlos.
+- ⚠️ Es una base razonable, no asesoramiento legal: hacelos revisar por un abogado de tu país antes de lanzar fuerte.
 
 ## Ruleta
 

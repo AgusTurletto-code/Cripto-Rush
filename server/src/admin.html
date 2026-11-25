@@ -27,6 +27,10 @@
 <select id="status" onchange="load()"><option>pending</option><option>paid</option><option>rejected</option></select>
 <div id="dbwarn"></div>
 <div class="stats" id="stats"></div>
+<h2>Anuncio a todos los jugadores</h2>
+<p style="color:#8b949e;font-size:13px">Lo reciben por Telegram quienes aceptaron los avisos. Usalo poco (novedades importantes): si molesta, bloquean el bot.</p>
+<textarea id="bc" rows="4" style="width:100%;max-width:640px;font:inherit;padding:8px;border-radius:6px;border:1px solid #30363d;background:#161b22;color:inherit" placeholder="🚀 ¡Nuevo personaje en Crypto Rush!..."></textarea><br>
+<button onclick="sendBroadcast()">Enviar anuncio</button> <span id="bcres"></span>
 <h2>Diagnóstico de anuncios</h2>
 <p style="color:#8b949e;font-size:13px">Últimos eventos desde que arrancó el servidor: errores que vio el juego y avisos (postbacks) que mandó Monetag.</p>
 <table><thead><tr><th>Hora</th><th>Origen</th><th>Detalle</th></tr></thead><tbody id="adlog"></tbody></table>
@@ -54,6 +58,7 @@ async function load() {
     ['Verificación de anuncios', s.adVerifyMode === 'postback' ? '✅ postback' : '⚠️ solo cliente'],
     ['Referidos', s.referralsConfigured ? `${s.referredUsers} invitados · ${s.blockedReferrals} bloqueados` : '⚠️ falta BOT_USERNAME'],
     ['Diarios reclamados hoy', s.dailyClaims24h],
+    ['Avisos del bot', `${s.notifyUsers} jugadores los aceptan · ${s.notifications24h} enviados en 24h`],
     ['Ruleta 24h', `${s.spins24h} giros · ${s.jackpots} premio(s) mayor(es) en total`],
     ['Tasa (monedas = $1)', s.economy ? `${Number(s.economy.rate).toLocaleString('es')} · ${({ auto: '🤖 automática', learning: '📚 aprendiendo (pocos datos)', fixed: '📌 fija' })[s.economy.mode] || s.economy.mode}` : '?'],
     ['Base de la tasa', s.economy ? `ingresos ${s.economy.windowDays || 7}d $${s.economy.revenue ?? 0} · monedas ${Number(s.economy.netCoins || 0).toLocaleString('es')} · devuelve ${Math.round(s.economy.share * 100)}%` : '?'],
@@ -105,6 +110,15 @@ async function ban(id, banned) {
   if (!confirm(banned ? '¿Suspender la cuenta ' + id + '?' : '¿Quitar la suspensión de ' + id + '?')) return;
   await fetch('/api/admin/users/' + encodeURIComponent(id) + '/ban', { method: 'POST', headers: h(), body: JSON.stringify({ banned }) });
   load();
+}
+async function sendBroadcast() {
+  const text = $('bc').value.trim();
+  if (!text) return;
+  if (!confirm('¿Enviar este anuncio a todos los jugadores que aceptan avisos?')) return;
+  $('bcres').textContent = 'Enviando…';
+  const r = await fetch('/api/admin/broadcast', { method: 'POST', headers: h(), body: JSON.stringify({ text }) }).then(r => r.json());
+  $('bcres').textContent = r.error ? 'Error: ' + r.error : `Enviado a ${r.ok} de ${r.total}`;
+  if (!r.error) $('bc').value = '';
 }
 async function act(id, action) {
   const txHash = $('tx' + id)?.value;

@@ -67,6 +67,7 @@ const realApi = {
   claimDaily: () => call('POST', '/daily/claim'),
   referrals: () => call('GET', '/referrals'),
   spinStart: () => call('POST', '/spin/start'),
+  setNotify: (prefs) => call('POST', '/notify', prefs),
   legal: (lang) => call('GET', '/legal?lang=' + lang),
   acceptTerms: (version) => call('POST', '/terms/accept', { version }),
   spinClaim: (spinId) => call('POST', '/spin/claim', { spinId }),

@@ -1,7 +1,7 @@
 import { Game } from './game/game.js';
 import { CHARACTERS, renderPortraits } from './game/characters.js';
 import { api, errMsg, DEMO } from './services/api.js';
-import { initTelegram, haptic, tg } from './services/telegram.js';
+import { initTelegram, haptic, tg, canAskWriteAccess, requestWriteAccess } from './services/telegram.js';
 import { showRewardedAd, preloadAds, preloadAd } from './services/ads.js';
 import { initWallet, friendly, short } from './services/wallet.js';
 import { sfx, unlockAudio, isMuted, setMuted, startMusic, stopMusic, setMusicSpeed } from './services/sound.js';
@@ -107,6 +107,7 @@ function showHome() {
     <div class="topbar">
       <div class="pill">🪙 ${fmt(user.balance)} <small>≈ $${usd(user.balance)}</small></div>
       <div class="top-actions">
+        ${canAskWriteAccess() || user.notify?.allowed ? `<button class="icon-btn" id="bell" aria-label="${esc(user.notify?.allowed && user.notify?.on ? t('notify_on') : t('notify_off'))}">${user.notify?.allowed && user.notify?.on ? '🔔' : '🔕'}</button>` : ''}
         <button class="icon-btn" id="sound" aria-label="${esc(isMuted() ? t('sound_off') : t('sound_on'))}">${isMuted() ? '🔇' : '🔊'}</button>
         <button class="icon-btn lang" id="lang" aria-label="Language">${LANG === 'es' ? 'ES' : 'EN'}</button>
       </div>
@@ -138,6 +139,11 @@ function showHome() {
   on('#wheelbtn', showWheel);
   on('#legal', () => showLegal(showHome));
   if (!user.termsAccepted) { showTermsGate(); return; }
+  on('#bell', async () => {
+    if (!user.notify?.allowed) return askNotify(showHome, true);
+    try { user = await api.setNotify({ on: !user.notify.on }); toast(t(user.notify.on ? 'notify_on' : 'notify_off'), 1500); } catch (e) { toast(errMsg(e)); }
+    showHome();
+  });
   on('#sound', () => { setMuted(!isMuted()); toast(isMuted() ? t('sound_off') : t('sound_on'), 1200); showHome(); });
   on('#lang', () => setLang(LANG === 'es' ? 'en' : 'es'));
   if (dailyReady && !dailyShownThisSession) { dailyShownThisSession = true; setTimeout(showDaily, 400); }
@@ -299,7 +305,7 @@ function showGameOver() {
         <p>${esc(r.capped ? t('capped') : t('balance_line', { b: fmt(user.balance), usd: usd(user.balance) }))}</p>
         <div class="stack"><button class="btn primary" id="again">${esc(t('again'))}</button><button class="btn ghost" id="home">${esc(t('menu'))}</button></div>`);
       on('#again', () => { closeModal(); showHome(); startRun(); });
-      on('#home', () => { closeModal(); showHome(); });
+      on('#home', () => { closeModal(); if (r.credited > 0 && shouldOfferNotify()) askNotify(showHome); else showHome(); });
     } catch (e) {
       toast(errMsg(e), 3500);
       closeModal(); showHome();
@@ -393,6 +399,33 @@ async function showInvite() {
     ? r.friends.map((f) => `<li><span>${esc(f.name)}<br><small class="legal">${new Date(f.since).toLocaleDateString(LOCALE)}</small></span>
         <span class="tag ${f.status === 'qualified' ? 'paid' : f.status === 'blocked' ? 'rejected' : 'pending'}">${esc(t('ref_' + (f.status || 'pending')))}</span></li>`).join('')
     : `<li>${esc(t('ref_none'))}</li>`;
+}
+
+// ---------- Avisos del bot ----------
+const NOTIFY_ASKED = 'cr-notify-asked';
+function shouldOfferNotify() {
+  if (user.notify?.allowed || !canAskWriteAccess()) return false;
+  const last = Number(store.get(NOTIFY_ASKED) || 0);
+  return Date.now() - last > 3 * 864e5;
+}
+
+/** Explica para qué sirven los avisos y, si acepta, pide el permiso oficial de Telegram. */
+function askNotify(after, direct = false) {
+  store.set(NOTIFY_ASKED, String(Date.now()));
+  const go = async () => {
+    const granted = await requestWriteAccess();
+    if (granted) {
+      try { user = await api.setNotify({ allowed: true, on: true }); haptic('success'); toast(t('notify_on')); } catch (e) { toast(errMsg(e)); }
+    } else toast(t('notify_denied'), 3500);
+    after();
+  };
+  if (direct) return go();
+  closeModal();
+  modal(`<h2>${esc(t('notify_title'))}</h2><p>${esc(t('notify_body'))}</p>
+    <div class="stack"><button class="btn primary" id="n-yes">${esc(t('notify_yes'))}</button>
+    <button class="btn ghost" id="n-no">${esc(t('notify_no'))}</button></div>`);
+  on('#n-yes', () => { closeModal(); go(); });
+  on('#n-no', () => { closeModal(); after(); });
 }
 
 // ---------- Términos y privacidad ----------

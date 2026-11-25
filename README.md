@@ -143,6 +143,22 @@ El repo incluye un `Dockerfile`: Railway lo detecta solo.
 - Si cambiás el texto, actualizá `TERMS_VERSION` en `legal.js`: todos tendrán que volver a aceptarlos.
 - ⚠️ Es una base razonable, no asesoramiento legal: hacelos revisar por un abogado de tu país antes de lanzar fuerte.
 
+## Avisos del bot
+
+El bot le escribe por Telegram a quien lo autorizó (permiso oficial de Telegram que el juego pide después de cobrar la primera partida, o con el botón 🔔 del menú). Usa el mismo `BOT_TOKEN`; el botón de cada mensaje abre `t.me/BOT_USERNAME/MINI_APP_NAME`.
+
+| Aviso | Cuándo | Límite |
+|---|---|---|
+| 🎁 Recompensa diaria / 🔥 racha por cortarse | no entra hace 20 h (y jugó en los últimos 14 días) | 1 recordatorio cada 20 h |
+| 🎡 Giros de la ruleta listos | se recargan después de gastar los 10 | idem |
+| ✅ Retiro pagado / ❌ rechazado | al marcarlo en `/admin` (incluye el hash o el motivo) | siempre |
+| 🎉 Amigo activado | cuando un invitado califica | siempre |
+| 😱 Superaron tu récord | un amigo (quien te invitó o tus invitados) te pasa | 1 cada 6 h |
+
+- Los recordatorios se revisan cada 10 minutos (`server/src/notify.js`).
+- Si alguien bloquea el bot, no se le vuelve a escribir. Cada jugador puede apagarlos con 🔔.
+- En `/admin` hay un cuadro para **mandar un anuncio a todos** (usalo poco).
+
 ## Ruleta
 
 - Hasta `spinsPer24h` (10) giros cada 24 h (ventana móvil), y **cada giro requiere ver un anuncio**.

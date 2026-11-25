@@ -59,6 +59,7 @@ export const demoApi = {
   },
   legal: () => wait({ version: 'demo', html: '<h1>Términos y condiciones</h1><p>En la versión publicada del juego acá se muestran los términos completos, con la tasa, los premios y las probabilidades reales.</p>' }),
   acceptTerms: () => wait({ ...withDaily(state.user), termsAccepted: true }),
+  setNotify: (p) => { state.user.notify = { allowed: true, on: p.on ?? true }; save(); return wait(withDaily(state.user)); },
   spinStart() {
     if (withDaily(state.user).spins.left <= 0) fail('spin_limit');
     return wait({ spinId: 'demo-' + Date.now(), ymid: 'spin_demo' });

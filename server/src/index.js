@@ -9,6 +9,7 @@ import { checkRun, CHARACTERS, multiplierOf, creditFor } from './game.js';
 import { rate, minWithdrawCoins, economyState, recordIssued, recordSpent, recompute } from './economy.js';
 import { WHEEL, pickSegment, publicWheel } from './wheel.js';
 import { TERMS_VERSION, legalHtml, legalPage } from './legal.js';
+import { notifyWithdrawal, notifyFriendQualified, notifyRecordBeaten, runReminders, broadcast, startReminders } from './notify.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -141,6 +142,7 @@ function publicUser(u) {
     daily: dailyState(u),
     spins: spinStatus(u.id),
     termsAccepted: u.terms_version === TERMS_VERSION,
+    notify: { allowed: !!u.notify_ok, on: !!u.notify_on },
   };
 }
 
@@ -171,6 +173,7 @@ function auth(req, _res, next) {
   const user = getUser.get(userId);
   if (!user) return next(new ApiError(401, 'unauthorized'));
   if (user.banned) return next(new ApiError(403, 'banned'));
+  if (!user.last_seen || now() - user.last_seen > 5 * 60 * 1000) db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(now(), user.id);
   req.user = user;
   next();
 }
@@ -208,6 +211,10 @@ app.post('/api/auth', wrap((req) => {
     ON CONFLICT(id) DO UPDATE SET username = excluded.username, first_name = excluded.first_name
   `).run(id, tgUser.username || null, tgUser.first_name || null, now());
   recordDevice(id, req.body?.device, req.ip);
+  // idioma y permiso para que el bot le escriba (lo informa Telegram en initData)
+  const allowsWrite = tgUser.allows_write_to_pm || (config.devMode && req.body?.devAllowsWrite);
+  db.prepare(`UPDATE users SET lang = ?, last_seen = ?, notify_ok = CASE WHEN ? THEN 1 ELSE notify_ok END WHERE id = ?`)
+    .run(String(tgUser.language_code || '').startsWith('es') ? 'es' : (tgUser.language_code ? 'en' : (config.devMode ? 'es' : 'en')), now(), allowsWrite ? 1 : 0, id);
 
   // Referido: solo al crear la cuenta, con start_param = ref_<id del que invitó>
   const startParam = tgUser.start_param || (config.devMode ? String(req.body?.devStartParam || '') : '');
@@ -256,6 +263,14 @@ const api = express.Router();
 api.use(auth);
 
 api.get('/me', wrap((req) => publicUser(req.user)));
+
+// Avisos del bot: el juego informa si el jugador dio permiso (requestWriteAccess) y si los quiere
+api.post('/notify', wrap((req) => {
+  const { allowed, on } = req.body || {};
+  if (allowed === true) db.prepare('UPDATE users SET notify_ok = 1 WHERE id = ?').run(req.user.id);
+  if (typeof on === 'boolean') db.prepare('UPDATE users SET notify_on = ? WHERE id = ?').run(on ? 1 : 0, req.user.id);
+  return publicUser(getUser.get(req.user.id));
+}));
 
 api.post('/terms/accept', wrap((req) => {
   if (req.body?.version !== TERMS_VERSION) throw new ApiError(409, 'terms_outdated');
@@ -382,6 +397,7 @@ api.post('/run/end', wrap((req) => {
       .run(credited, credited, Math.floor(distance), req.user.id);
     recordIssued(credited);
     payReferral(req.user.id, credited);
+    notifyRecordBeaten(req.user, req.user.best_distance, Math.floor(distance)); // se envía después, sin demorar la respuesta
 
     return {
       credited,
@@ -417,6 +433,7 @@ function payReferral(userId, credited) {
     addTo(u.referred_by, r.referrerBonus, r.referrerBonus);
     addTo(userId, r.welcomeBonus);
     console.log(`[ref] ${userId} calificó: +${r.referrerBonus} a ${u.referred_by}, +${r.welcomeBonus} a ${userId}`);
+    notifyFriendQualified(u.referred_by, u, r.referrerBonus);
   }
   const commission = Math.floor(credited * r.commission);
   if (commission > 0) addTo(u.referred_by, commission, commission);
@@ -477,6 +494,8 @@ function claimSpin(req, allowPending) {
       .run(verified ? 'done' : 'pending', segment, seg.coins || 0, seg.jackpot ? 1 : 0, now(), spin.id);
     const updated = db.prepare('SELECT * FROM spins WHERE id = ?').get(spin.id);
     if (verified) { grantSpin(updated); updated.status = 'done'; }
+    const st = spinStatus(req.user.id);
+    if (st.left === 0) db.prepare('UPDATE users SET spins_refill_at = ? WHERE id = ?').run(st.nextAt, req.user.id);
     return result(updated);
   });
 }
@@ -635,11 +654,18 @@ admin.post('/withdrawals/:id', wrap((req) => {
         .run(note || null, now(), w.id);
       db.prepare('UPDATE users SET balance = balance + ? WHERE id = ?').run(w.coins, w.user_id); // devuelve monedas
     } else throw new ApiError(400, 'bad_action');
+    notifyWithdrawal(db.prepare('SELECT * FROM withdrawals WHERE id = ?').get(w.id), action);
     return { ok: true };
   });
 }));
 admin.get('/ads-debug', wrap(() => adLog));
 admin.post('/economy/recompute', wrap(() => recompute()));
+admin.post('/reminders/run', async (_req, res) => res.json(await runReminders()));
+admin.post('/broadcast', async (req, res) => {
+  const text = String(req.body?.text || '').trim();
+  if (!text) return res.status(400).json({ error: 'empty' });
+  res.json(await broadcast(text));
+});
 admin.get('/stats', wrap(() => ({
   users: db.prepare('SELECT COUNT(*) c FROM users').get().c,
   runs24h: db.prepare('SELECT COUNT(*) c FROM runs WHERE started_at >= ?').get(now() - DAY).c,
@@ -653,6 +679,8 @@ admin.get('/stats', wrap(() => ({
   adRevenueTotal: db.prepare('SELECT COALESCE(SUM(revenue),0) s FROM ad_postbacks').get().s,
   adVerifyMode: config.adVerifyMode,
   economy: economyState(),
+  notifyUsers: db.prepare('SELECT COUNT(*) c FROM users WHERE notify_ok = 1 AND notify_on = 1').get().c,
+  notifications24h: db.prepare('SELECT COUNT(*) c FROM notifications WHERE ok = 1 AND created_at >= ?').get(now() - DAY).c,
   spins24h: db.prepare('SELECT COUNT(*) c FROM spins WHERE claimed_at >= ?').get(now() - DAY).c,
   jackpots: db.prepare('SELECT COUNT(*) c FROM spins WHERE jackpot = 1').get().c,
   db: { path: config.dbPath, persistent: config.dbPersistent, volume: config.volumePath, onRailway: !!process.env.RAILWAY_ENVIRONMENT },
@@ -690,6 +718,7 @@ const dist = path.resolve(__dirname, '../../client/dist');
 app.use(express.static(dist));
 app.get('*', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
 
+startReminders();
 app.listen(config.port, () => {
   console.log(`🚀 Crypto Rush server en http://localhost:${config.port}  (devMode=${config.devMode}, ads=${config.adVerifyMode})`);
 });

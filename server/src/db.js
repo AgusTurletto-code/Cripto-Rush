@@ -111,6 +111,13 @@ addUserCol('ref_status', 'TEXT');          // pending | qualified | blocked
 addUserCol('ref_earnings', 'INTEGER NOT NULL DEFAULT 0');
 addUserCol('wallet_key', 'TEXT');
 addUserCol('terms_version', 'TEXT');          // versión de términos aceptada          // wallet normalizada (para detectar la misma wallet en 2 cuentas)
+addUserCol('lang', 'TEXT');                   // idioma de Telegram (para los avisos)
+addUserCol('last_seen', 'INTEGER');
+addUserCol('notify_ok', 'INTEGER NOT NULL DEFAULT 0');  // autorizó al bot a escribirle
+addUserCol('notify_on', 'INTEGER NOT NULL DEFAULT 1');  // no apagó los avisos
+addUserCol('last_promo_at', 'INTEGER');       // último recordatorio (diario / ruleta)
+addUserCol('spins_refill_at', 'INTEGER NOT NULL DEFAULT 0'); // cuándo se recargan sus giros (si los gastó todos)
+addUserCol('last_record_notice_at', 'INTEGER');
 db.exec('CREATE INDEX IF NOT EXISTS idx_users_ref ON users(referred_by)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_users_wallet ON users(wallet_key)');
 const runCols2 = db.prepare('PRAGMA table_info(runs)').all().map((c) => c.name);

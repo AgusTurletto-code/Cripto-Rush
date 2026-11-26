@@ -159,6 +159,12 @@ El bot le escribe por Telegram a quien lo autorizó (permiso oficial de Telegram
 - Si alguien bloquea el bot, no se le vuelve a escribir. Cada jugador puede apagarlos con 🔔.
 - En `/admin` hay un cuadro para **mandar un anuncio a todos** (usalo poco).
 
+## Cajas Cripto
+
+- Aparecen en la pista cada 400–900 m (`shared/boxes.js`); hay que estar en su carril para agarrarlas.
+- La posición de cada caja sale de la semilla de la partida: el servidor recalcula las cajas del recorrido y **solo acepta las que existían** antes de la distancia alcanzada (máx. 10 por partida).
+- Se abren al terminar la partida (o después, desde el menú). El premio lo sortea el servidor: 100 (40 %), 250 (30 %), 500 (18 %), 1.000 (9 %) o 2.500 (3 %) monedas; promedio ~370.
+
 ## Ruleta
 
 - Hasta `spinsPer24h` (10) giros cada 24 h (ventana móvil), y **cada giro requiere ver un anuncio**.

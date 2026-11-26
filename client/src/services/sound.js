@@ -85,6 +85,9 @@ export const sfx = {
   revive() { [392, 523, 659, 784, 1047].forEach((f, i) => tone({ f, dur: 0.15, vol: 0.14, type: 'triangle', at: i * 0.07 })); },
   cash() { [1047, 1319, 1568, 2093].forEach((f, i) => tone({ f, dur: 0.1, vol: 0.12, type: 'square', at: i * 0.05 })); },
   click() { tone({ f: 700, dur: 0.04, vol: 0.08, type: 'triangle' }); },
+  box() { [784, 988, 1319].forEach((f, i) => tone({ f, dur: 0.14, vol: 0.15, type: 'triangle', at: i * 0.07 })); },
+  shake() { tone({ f: 180, f2: 120, dur: 0.08, vol: 0.18, type: 'square' }); },
+  boxOpen() { noise({ dur: 0.35, vol: 0.3, from: 3000, to: 600 }); [1047, 1319, 1568, 2093].forEach((f, i) => tone({ f, dur: 0.18, vol: 0.13, type: 'square', at: 0.12 + i * 0.07 })); },
   tick() { tone({ f: 1500, dur: 0.025, vol: 0.06, type: 'square' }); },
   jackpot() {
     [523, 659, 784, 1047, 784, 1047, 1319, 1568].forEach((f, i) => tone({ f, dur: 0.22, vol: 0.16, type: 'square', at: i * 0.11 }));

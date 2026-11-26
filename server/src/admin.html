@@ -59,6 +59,7 @@ async function load() {
     ['Referidos', s.referralsConfigured ? `${s.referredUsers} invitados · ${s.blockedReferrals} bloqueados` : '⚠️ falta BOT_USERNAME'],
     ['Diarios reclamados hoy', s.dailyClaims24h],
     ['Avisos del bot', `${s.notifyUsers} jugadores los aceptan · ${s.notifications24h} enviados en 24h`],
+    ['Cajas 24h', `${s.boxes24h} agarradas · ${s.boxesOpened24h.c} abiertas (${Number(s.boxesOpened24h.s).toLocaleString('es')} monedas)`],
     ['Ruleta 24h', `${s.spins24h} giros · ${s.jackpots} premio(s) mayor(es) en total`],
     ['Tasa (monedas = $1)', s.economy ? `${Number(s.economy.rate).toLocaleString('es')} · ${({ auto: '🤖 automática', learning: '📚 aprendiendo (pocos datos)', fixed: '📌 fija' })[s.economy.mode] || s.economy.mode}` : '?'],
     ['Base de la tasa', s.economy ? `ingresos ${s.economy.windowDays || 7}d $${s.economy.revenue ?? 0} · monedas ${Number(s.economy.netCoins || 0).toLocaleString('es')} · devuelve ${Math.round(s.economy.share * 100)}%` : '?'],

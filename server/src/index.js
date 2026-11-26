@@ -8,6 +8,7 @@ import { validateInitData, signSession, verifySession } from './auth.js';
 import { checkRun, CHARACTERS, multiplierOf, creditFor } from './game.js';
 import { rate, minWithdrawCoins, economyState, recordIssued, recordSpent, recompute } from './economy.js';
 import { WHEEL, pickSegment, publicWheel } from './wheel.js';
+import { BOXES, boxesForSeed } from '../../shared/boxes.js';
 import { TERMS_VERSION, legalHtml, legalPage } from './legal.js';
 import { notifyWithdrawal, notifyFriendQualified, notifyRecordBeaten, runReminders, broadcast, startReminders } from './notify.js';
 
@@ -143,6 +144,7 @@ function publicUser(u) {
     spins: spinStatus(u.id),
     termsAccepted: u.terms_version === TERMS_VERSION,
     notify: { allowed: !!u.notify_ok, on: !!u.notify_on },
+    boxes: db.prepare('SELECT COUNT(*) c FROM boxes WHERE user_id = ? AND opened_at IS NULL').get(u.id).c,
   };
 }
 
@@ -399,11 +401,22 @@ api.post('/run/end', wrap((req) => {
     payReferral(req.user.id, credited);
     notifyRecordBeaten(req.user, req.user.best_distance, Math.floor(distance)); // se envía después, sin demorar la respuesta
 
+    // Cajas Cripto: solo cuentan las que existían en este recorrido (misma semilla) antes de la distancia alcanzada
+    const valid = new Set(boxesForSeed(run.seed, Math.floor(distance) + 2).map((b) => b.i));
+    const claimed = [...new Set(Array.isArray(req.body?.boxes) ? req.body.boxes : [])]
+      .filter((i) => Number.isInteger(i) && valid.has(i)).slice(0, BOXES.maxPerRun);
+    if (Array.isArray(req.body?.boxes) && claimed.length < req.body.boxes.length) {
+      console.warn(`[cajas] ${req.user.id} mandó cajas que no existían en su recorrido: ${JSON.stringify(req.body.boxes)}`);
+    }
+    const insBox = db.prepare('INSERT OR IGNORE INTO boxes (user_id, run_id, idx, created_at) VALUES (?, ?, ?, ?)');
+    for (const i of claimed) insBox.run(req.user.id, run.id, i, now());
+
     return {
       credited,
       capped: credited < gross,
       doubled: !!run.doubled,
       pendingBonus,
+      boxesEarned: claimed.length,
       multiplier: run.multiplier,
       user: publicUser(getUser.get(req.user.id)),
     };
@@ -438,6 +451,20 @@ function payReferral(userId, credited) {
   const commission = Math.floor(credited * r.commission);
   if (commission > 0) addTo(u.referred_by, commission, commission);
 }
+
+// ---------- Cajas Cripto ----------
+const BOX_TOTAL = BOXES.rewards.reduce((s, r) => s + r.weight, 0);
+api.post('/box/open', wrap((req) => tx(() => {
+  const box = db.prepare('SELECT * FROM boxes WHERE user_id = ? AND opened_at IS NULL ORDER BY id LIMIT 1').get(req.user.id);
+  if (!box) throw new ApiError(404, 'no_boxes');
+  // sorteo en el servidor con un generador criptográfico
+  let r = crypto.randomInt(0, BOX_TOTAL), coins = BOXES.rewards[0].coins;
+  for (const x of BOXES.rewards) { r -= x.weight; if (r < 0) { coins = x.coins; break; } }
+  db.prepare('UPDATE boxes SET opened_at = ?, coins = ? WHERE id = ?').run(now(), coins, box.id);
+  db.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ?').run(coins, coins, req.user.id);
+  recordIssued(coins);
+  return { coins, user: publicUser(getUser.get(req.user.id)) };
+})));
 
 // ---------- Ruleta ----------
 /** Entrega el premio de un giro (monedas o premio mayor). Se llama dentro de una transacción. */
@@ -679,6 +706,8 @@ admin.get('/stats', wrap(() => ({
   adRevenueTotal: db.prepare('SELECT COALESCE(SUM(revenue),0) s FROM ad_postbacks').get().s,
   adVerifyMode: config.adVerifyMode,
   economy: economyState(),
+  boxes24h: db.prepare('SELECT COUNT(*) c FROM boxes WHERE created_at >= ?').get(now() - DAY).c,
+  boxesOpened24h: db.prepare('SELECT COUNT(*) c, COALESCE(SUM(coins),0) s FROM boxes WHERE opened_at >= ?').get(now() - DAY),
   notifyUsers: db.prepare('SELECT COUNT(*) c FROM users WHERE notify_ok = 1 AND notify_on = 1').get().c,
   notifications24h: db.prepare('SELECT COUNT(*) c FROM notifications WHERE ok = 1 AND created_at >= ?').get(now() - DAY).c,
   spins24h: db.prepare('SELECT COUNT(*) c FROM spins WHERE claimed_at >= ?').get(now() - DAY).c,

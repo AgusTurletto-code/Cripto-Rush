@@ -82,6 +82,7 @@ export class Game {
     this.coins = 0;
     this.invincible = 0;
     this.power = { magnet: 0, rocket: 0, shield: 0 };
+    this.boxes = []; // índices de las cajas agarradas (los valida el servidor)
   }
 
   // ---------- API pública ----------
@@ -114,7 +115,7 @@ export class Game {
     this.world.reset(1);
     this._resetPlayer();
   }
-  get result() { return { coins: this.coins, distance: Math.floor(this.d) }; }
+  get result() { return { coins: this.coins, distance: Math.floor(this.d), boxes: [...this.boxes] }; }
 
   // ---------- Controles ----------
   _bindInput() {
@@ -406,5 +407,17 @@ export class Game {
       }
     }
     this.world.powerups = this.world.powerups.filter((p) => !p.taken);
+
+    // cajas cripto
+    for (const b of this.world.boxes) {
+      if (Math.abs(b.d - this.d) < 1.1 && Math.abs(LANES[b.lane] - this.x) < 1.1 && py0 < 2.2) {
+        b.taken = true;
+        this.world.root.remove(b.mesh);
+        this.world.particles.emit(b.mesh.position, 'gold', 26, { spread: 1.4, up: 4, life: 0.8, size: 0.5 });
+        if (!this.boxes.includes(b.i)) this.boxes.push(b.i);
+        this.cb.onBox?.(this.boxes.length);
+      }
+    }
+    this.world.boxes = this.world.boxes.filter((b) => !b.taken);
   }
 }

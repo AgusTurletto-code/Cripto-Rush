@@ -2,6 +2,7 @@
 // No sirve para producción: el jugador podría editar su saldo.
 import { CHARACTERS } from '../game/characters.js';
 import WHEEL from '../../../shared/wheel.json';
+import { BOXES } from '../../../shared/boxes.js';
 
 const WTOTAL = WHEEL.segments.reduce((s, x) => s + x.weight, 0);
 const publicWheel = { spinsPer24h: WHEEL.spinsPer24h, jackpotUsd: WHEEL.jackpotUsd,
@@ -60,6 +61,15 @@ export const demoApi = {
   legal: () => wait({ version: 'demo', html: '<h1>Términos y condiciones</h1><p>En la versión publicada del juego acá se muestran los términos completos, con la tasa, los premios y las probabilidades reales.</p>' }),
   acceptTerms: () => wait({ ...withDaily(state.user), termsAccepted: true }),
   setNotify: (p) => { state.user.notify = { allowed: true, on: p.on ?? true }; save(); return wait(withDaily(state.user)); },
+  openBox() {
+    const u = state.user;
+    if (!u.boxes) fail('no_boxes');
+    const total = BOXES.rewards.reduce((s, r) => s + r.weight, 0);
+    let r = Math.random() * total, coins = BOXES.rewards[0].coins;
+    for (const x of BOXES.rewards) { r -= x.weight; if (r < 0) { coins = x.coins; break; } }
+    u.boxes--; u.balance += coins; save();
+    return wait({ coins, user: withDaily(u) });
+  },
   spinStart() {
     if (withDaily(state.user).spins.left <= 0) fail('spin_limit');
     return wait({ spinId: 'demo-' + Date.now(), ymid: 'spin_demo' });
@@ -88,13 +98,14 @@ export const demoApi = {
     else { if (run.revived) fail('already_revived'); run.revived = true; }
     return wait({ ok: true });
   },
-  endRun(_id, coins, distance) {
+  endRun(_id, coins, distance, boxes = []) {
+    state.user.boxes = (state.user.boxes || 0) + Math.min(boxes.length, BOXES.maxPerRun);
     const u = state.user;
     const credited = Math.floor(coins * run.multiplier) * (run.doubled ? 2 : 1);
     u.balance += credited; u.totalEarned += credited; u.earnedToday += credited;
     u.bestDistance = Math.max(u.bestDistance, distance);
     save();
-    return wait({ credited, capped: false, doubled: run.doubled, multiplier: run.multiplier, user: withDaily(u) });
+    return wait({ credited, capped: false, doubled: run.doubled, multiplier: run.multiplier, boxesEarned: Math.min(boxes.length, BOXES.maxPerRun), user: withDaily(u) });
   },
   buyCharacter(id) {
     const u = state.user;

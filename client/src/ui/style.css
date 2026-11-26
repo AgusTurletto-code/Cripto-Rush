@@ -194,6 +194,27 @@ input, select { width: 100%; padding: 12px; border-radius: 10px; border: 1px sol
 .legal-doc table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .legal-doc td, .legal-doc th { border-bottom: 1px solid var(--line); padding: 5px 4px; text-align: left; }
 
+/* ---------- Cajas Cripto ---------- */
+.hud-boxes { font-size: 18px; font-weight: 900; text-shadow: 0 2px 0 #000; margin-top: 4px; min-height: 0; }
+.hud-boxes:empty { display: none; }
+.hud-boxes.pop { animation: pop .35s ease-out; }
+.box-btn { background: linear-gradient(180deg, #b26bff, #6a1fc2); color: #fff; border-color: rgba(255,197,49,.6); }
+.box-callout { background: rgba(155,77,255,.15); border: 1px solid rgba(178,107,255,.5); border-radius: 14px; padding: 10px; margin: 8px 0 4px; display: flex; flex-direction: column; gap: 8px; }
+.crate-stage { position: relative; height: 215px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 6px; overflow: hidden; }
+.crate { position: relative; width: 120px; height: 120px; }
+.crate .body { position: absolute; left: 6px; right: 6px; bottom: 0; height: 92px; border-radius: 10px;
+  background: linear-gradient(180deg, #9b4dff, #5a189a); border: 6px solid #ffc531; display: grid; place-items: center; box-shadow: 0 10px 24px rgba(0,0,0,.45); }
+.crate .body span { width: 46px; height: 46px; border-radius: 50%; background: #ffc531; color: #7a3e00; font-weight: 900; font-size: 32px; display: grid; place-items: center; }
+.crate .lid { position: absolute; left: 0; right: 0; top: 4px; height: 30px; border-radius: 8px; background: linear-gradient(180deg, #ffd65a, #e0a000); box-shadow: 0 4px 0 #8a5a00; z-index: 1; transition: transform .45s cubic-bezier(.2,1.6,.4,1); }
+.crate.shaking { animation: shake .22s linear infinite; }
+@keyframes shake { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-7deg) translateY(-2px); } 75% { transform: rotate(7deg) translateY(-2px); } }
+.crate.open .lid { transform: translate(30px, -34px) rotate(30deg); }
+.crate.open .body { filter: brightness(1.15); }
+.crate-prize { position: absolute; top: 8px; left: 0; right: 0; text-align: center; font-size: 34px; font-weight: 900; color: var(--gold); opacity: 0; transform: translateY(30px) scale(.6); transition: all .45s cubic-bezier(.2,1.6,.4,1); text-shadow: 0 3px 0 #5a2a00; }
+.crate-prize.show { opacity: 1; transform: translateY(-6px) scale(1); }
+.crate-prize.big { font-size: 42px; }
+@media (prefers-reduced-motion: reduce) { .crate.shaking { animation: none; } }
+
 .verifying { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
   background: rgba(5, 8, 20, .82); backdrop-filter: blur(4px); text-align: center; padding: 16px; }
 .verifying b { font-size: 20px; }

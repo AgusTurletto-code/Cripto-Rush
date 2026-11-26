@@ -101,6 +101,21 @@ CREATE TABLE IF NOT EXISTS spins (
 CREATE INDEX IF NOT EXISTS idx_spins_user ON spins(user_id, claimed_at);
 `);
 
+// Cajas Cripto agarradas en las partidas (se abren después)
+db.exec(`
+CREATE TABLE IF NOT EXISTS boxes (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    TEXT NOT NULL,
+  run_id     TEXT NOT NULL,
+  idx        INTEGER NOT NULL,       -- número de caja dentro de la partida
+  created_at INTEGER NOT NULL,
+  opened_at  INTEGER,
+  coins      INTEGER,
+  UNIQUE(run_id, idx)
+);
+CREATE INDEX IF NOT EXISTS idx_boxes_user ON boxes(user_id, opened_at);
+`);
+
 // Migraciones simples: columnas agregadas después de la primera versión
 const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
 const addUserCol = (name, def) => { if (!userCols.includes(name)) db.exec(`ALTER TABLE users ADD COLUMN ${name} ${def}`); };

@@ -63,6 +63,10 @@ const game = new Game(document.getElementById('game'), {
   },
   onCoin() { sfx.coin(); if (game.coins % 10 === 0) haptic('light'); },
   onSpeed(v) { setMusicSpeed(v); },
+  onBox(n) {
+    sfx.box(); haptic('medium'); toast(t('box_got'), 1300);
+    if (hudEls?.boxes) { hudEls.boxes.textContent = '📦 ' + n; hudEls.boxes.classList.remove('pop'); void hudEls.boxes.offsetWidth; hudEls.boxes.classList.add('pop'); }
+  },
   onInput(a) {
     if (a === 'left' || a === 'right') sfx.lane();
     else if (a === 'up') sfx.jump();
@@ -115,6 +119,7 @@ function showHome() {
     <div class="logo"><h1>CRYPTO<br>RUSH</h1><p>${esc(t('logo_sub'))}</p></div>
     <div class="spacer"></div>
     <div class="home-actions">
+      ${user.boxes > 0 ? `<button class="btn box-btn" id="homeboxes">${esc(t('boxes_btn', { n: user.boxes }))}</button>` : ''}
       <button class="btn primary" id="play">${esc(t('play'))}</button>
       <div class="row">
         <button class="btn btn-icon" id="chars">${portrait(user.character, 'mini')} ${esc(t('characters'))} <span class="mult">${fmtMult(multOf(user.character))}</span></button>
@@ -137,6 +142,7 @@ function showHome() {
   on('#daily', showDaily);
   on('#invite', showInvite);
   on('#wheelbtn', showWheel);
+  on('#homeboxes', () => showBoxes(showHome));
   on('#legal', () => showLegal(showHome));
   if (!user.termsAccepted) { showTermsGate(); return; }
   on('#bell', async () => {
@@ -153,11 +159,11 @@ function showHud() {
   render(`
   <div class="hud">
     <div class="top">
-      <div><div class="coins"><span id="h-coins">🪙 0</span> <span class="mult">${fmtMult(run.multiplier)}</span></div><div class="powerups" id="h-pu"></div></div>
+      <div><div class="coins"><span id="h-coins">🪙 0</span> <span class="mult">${fmtMult(run.multiplier)}</span></div><div class="hud-boxes" id="h-boxes"></div><div class="powerups" id="h-pu"></div></div>
       <div style="display:flex"><div class="dist" id="h-dist">0 m</div><button class="pause" id="pause" aria-label="Pause">⏸</button></div>
     </div>
   </div>`);
-  hudEls = { coins: $('#h-coins'), dist: $('#h-dist'), pu: $('#h-pu') };
+  hudEls = { coins: $('#h-coins'), dist: $('#h-dist'), pu: $('#h-pu'), boxes: $('#h-boxes') };
   on('#pause', () => { game.pause(); stopMusic(); showPause(); });
 }
 
@@ -295,7 +301,7 @@ function showGameOver() {
   const finish = async () => {
     ui.querySelectorAll('.modal button').forEach((b) => (b.disabled = true));
     try {
-      const r = await api.endRun(run.runId, coins, distance);
+      const r = await api.endRun(run.runId, coins, distance, game.result.boxes);
       user = r.user;
       closeModal();
       if (r.credited > 0) { haptic('success'); sfx.cash(); }
@@ -303,7 +309,10 @@ function showGameOver() {
         <div class="big">+${fmt(r.credited)}</div>
         ${r.pendingBonus ? `<p class="pending">⏳ ${esc(t('pending_bonus', { n: fmt(r.pendingBonus) }))}</p>` : ''}
         <p>${esc(r.capped ? t('capped') : t('balance_line', { b: fmt(user.balance), usd: usd(user.balance) }))}</p>
+        ${user.boxes > 0 ? `<div class="box-callout"><b>${esc(r.boxesEarned ? t('boxes_after_run', { n: r.boxesEarned }) : t('boxes_have', { n: user.boxes }))}</b>
+          <button class="btn box-btn" id="openboxes">${esc(t('boxes_btn', { n: user.boxes }))}</button></div>` : ''}
         <div class="stack"><button class="btn primary" id="again">${esc(t('again'))}</button><button class="btn ghost" id="home">${esc(t('menu'))}</button></div>`);
+      on('#openboxes', () => { closeModal(); showBoxes(() => showHome()); });
       on('#again', () => { closeModal(); showHome(); startRun(); });
       on('#home', () => { closeModal(); if (r.credited > 0 && shouldOfferNotify()) askNotify(showHome); else showHome(); });
     } catch (e) {
@@ -399,6 +408,46 @@ async function showInvite() {
     ? r.friends.map((f) => `<li><span>${esc(f.name)}<br><small class="legal">${new Date(f.since).toLocaleDateString(LOCALE)}</small></span>
         <span class="tag ${f.status === 'qualified' ? 'paid' : f.status === 'blocked' ? 'rejected' : 'pending'}">${esc(t('ref_' + (f.status || 'pending')))}</span></li>`).join('')
     : `<li>${esc(t('ref_none'))}</li>`;
+}
+
+// ---------- Cajas Cripto ----------
+/** Abre las cajas de a una, con animación. El premio lo sortea el servidor. */
+function showBoxes(after) {
+  closeModal();
+  modal(`<h2>${esc(t('boxes_title'))}</h2>
+    <div class="crate-stage"><div class="crate" id="crate"><div class="lid"></div><div class="body"><span>?</span></div></div>
+    <div class="crate-prize" id="prize"></div></div>
+    <p id="box-left">${esc(t('boxes_have', { n: user.boxes }))}</p>
+    <div class="stack"><button class="btn box-btn" id="b-open">${esc(t('box_open'))}</button>
+    <button class="btn ghost" id="b-done">${esc(t('box_done'))}</button></div>`);
+  on('#b-done', () => { closeModal(); after(); });
+  on('#b-open', openOne);
+}
+
+async function openOne() {
+  const btn = $('#b-open'), crate = $('#crate'), prize = $('#prize');
+  if (!btn || !crate) return;
+  btn.disabled = true;
+  crate.className = 'crate shaking'; prize.className = 'crate-prize'; prize.textContent = '';
+  sfx.shake(); haptic('light');
+  const tick = setInterval(() => { sfx.shake(); haptic('light'); }, 220);
+  let r;
+  try {
+    [r] = await Promise.all([api.openBox(), new Promise((res) => setTimeout(res, 900))]);
+  } catch (e) {
+    clearInterval(tick); crate.className = 'crate'; btn.disabled = false; toast(errMsg(e)); return;
+  }
+  clearInterval(tick);
+  user = r.user;
+  crate.className = 'crate open';
+  prize.textContent = t('box_won', { n: fmt(r.coins) });
+  prize.className = 'crate-prize show' + (r.coins >= 1000 ? ' big' : '');
+  sfx.boxOpen(); haptic(r.coins >= 1000 ? 'success' : 'medium');
+  if (r.coins >= 1000) confetti();
+  const left = $('#box-left');
+  if (left) left.textContent = user.boxes > 0 ? t('boxes_have', { n: user.boxes }) : t('balance_line', { b: fmt(user.balance), usd: usd(user.balance) });
+  if (user.boxes > 0) { btn.textContent = t('box_open_next', { n: user.boxes }); btn.disabled = false; btn.onclick = () => { sfx.click(); openOne(); }; }
+  else btn.remove();
 }
 
 // ---------- Avisos del bot ----------

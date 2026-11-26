@@ -3,6 +3,7 @@ import { createRng } from './rng.js';
 import { LANES, RULES, speedAtDistance } from './rules.js';
 import { toon, coinFaceTex, mesh as outlined } from './characters.js';
 import { t } from '../i18n.js';
+import { boxesForSeed } from '../../../shared/boxes.js';
 
 // ---------------------------------------------------------------------------
 // Texturas generadas con canvas (sin assets externos)
@@ -466,6 +467,34 @@ export function makePowerupModel(kind) {
   return g;
 }
 
+// ---------- Caja Cripto ----------
+const boxTex = canvasTexture(256, 256, (g, w, h) => {
+  const grd = g.createLinearGradient(0, 0, 0, h);
+  grd.addColorStop(0, '#9b4dff'); grd.addColorStop(1, '#5a189a');
+  g.fillStyle = grd; g.fillRect(0, 0, w, h);
+  g.strokeStyle = '#ffc531'; g.lineWidth = 22; g.strokeRect(11, 11, w - 22, h - 22);
+  g.strokeStyle = '#b07a00'; g.lineWidth = 4; g.strokeRect(26, 26, w - 52, h - 52);
+  g.fillStyle = '#ffc531'; g.beginPath(); g.arc(w / 2, h / 2, 62, 0, 7); g.fill();
+  g.fillStyle = '#7a3e00'; g.font = '900 96px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('?', w / 2, h / 2 + 6);
+});
+const boxMat = toon(0xffffff, { map: boxTex, emissive: 0x220833 });
+const boxGold = toon(0xffc531, { emissive: 0x442a00 });
+
+function makeBox() {
+  const g = new THREE.Group();
+  const inner = new THREE.Group(); inner.name = 'boxInner'; g.add(inner);
+  inner.add(outlined(new THREE.BoxGeometry(0.95, 0.8, 0.95), boxMat, 0.04));
+  const lid = outlined(new THREE.BoxGeometry(1.05, 0.22, 1.05), boxGold, 0.03);
+  lid.position.y = 0.5; inner.add(lid);
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), boxGold); knob.position.y = 0.68; inner.add(knob);
+  const glow = new THREE.Sprite(glowMat(0xb26bff, 0.7)); glow.scale.setScalar(2.4); g.add(glow);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.05, 8, 32), new THREE.MeshBasicMaterial({ color: 0xffc531, transparent: true, opacity: 0.7 }));
+  ring.name = 'boxRing'; g.add(ring);
+  g.traverse((o) => (o.frustumCulled = false));
+  return g;
+}
+
 function makePickup(kind) {
   const g = new THREE.Group();
   const model = makePowerupModel(kind);
@@ -644,6 +673,11 @@ export class World {
     this.coinRunLeft = 0;
     this.nextDecorD = -30;
     this.nextLampD = -30;
+    for (const b of this.boxes || []) this.root.remove(b.mesh);
+    // cajas de esta partida (mismas posiciones que calcula el servidor con la semilla)
+    this.boxPlan = boxesForSeed(seed, 60000);
+    this.boxes = [];
+    this.nextBox = 0;
     this.update(0);
   }
 
@@ -670,6 +704,11 @@ export class World {
     }
     if (d < 400 && types.every(Boolean)) types[r.int(0, 2)] = null;
 
+    // el carril de una caja queda libre alrededor de ella, para que siempre se pueda agarrar
+    for (const b of this.boxPlan || []) {
+      if (b.d > d + 14) break;
+      if (b.d > d - 10) types[b.lane] = null;
+    }
     this.prevFree = new Set([0, 1, 2].filter((l) => types[l] !== 'wall'));
     this.rows.push({ d, types });
 
@@ -726,6 +765,7 @@ export class World {
   }
 
   addCoin(lane, d, y) {
+    if ((this.boxPlan || []).some((b) => b.lane === lane && Math.abs(b.d - d) < 2)) return;
     const mesh = new THREE.Mesh(G.coin, [M.coinEdge, M.coinFace, M.coinFace]);
     mesh.position.set(LANES[lane], y, -d);
     this.root.add(mesh);
@@ -847,6 +887,14 @@ export class World {
     while (this.nextCoinD < ahead) this._genCoin();
     while (this.nextDecorD < ahead + 40) this._genDecor();
     while (this.nextLampD < ahead + 30) this._genLamp();
+    while (this.boxPlan && this.nextBox < this.boxPlan.length && this.boxPlan[this.nextBox].d < ahead) {
+      const b = this.boxPlan[this.nextBox++];
+      const mesh = makeBox();
+      mesh.scale.setScalar(1.25); // que se vea bien de lejos
+      mesh.position.set(LANES[b.lane], 0.7, -b.d);
+      this.root.add(mesh);
+      this.boxes.push({ ...b, mesh, inner: mesh.getObjectByName('boxInner'), ring: mesh.getObjectByName('boxRing') });
+    }
 
     const behind = playerD - 15;
     const cull = (arr, extra = 0) => arr.filter((o) => {
@@ -856,10 +904,17 @@ export class World {
     this.obstacles = cull(this.obstacles, 8);
     this.coins = cull(this.coins);
     this.powerups = cull(this.powerups);
+    this.boxes = cull(this.boxes || []);
     this.decor = cull(this.decor, 14);
     while (this.rows.length && this.rows[0].d < behind - 20) this.rows.shift();
 
     for (const c of this.coins) c.mesh.rotation.y = time * 3 + c.d * 0.2;
+    for (const b of this.boxes) {
+      b.inner.rotation.y = time * 1.5;
+      b.mesh.position.y = 0.7 + Math.sin(time * 3 + b.d) * 0.15;
+      b.ring.rotation.x = Math.PI / 2; b.ring.rotation.z = time * 2;
+      b.ring.scale.setScalar(1 + Math.sin(time * 6) * 0.08);
+    }
     for (const p of this.powerups) {
       const { model, ring } = p.mesh.userData;
       model.rotation.y = time * 1.8;
